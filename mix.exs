@@ -31,6 +31,9 @@ defmodule ZoomGate.MixProject do
       {:libcluster, "~> 3.4"},
       {:websock_adapter, "~> 0.5"},
 
+      # Config
+      {:dotenvy, "~> 1.1"},
+
       # Dev tools
       {:tidewave, "~> 0.5", only: :dev}
     ]
