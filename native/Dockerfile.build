@@ -1,0 +1,21 @@
+# Build the zoom_worker binary inside a Linux container.
+# Usage (from project root):
+#   docker build -f native/Dockerfile.build --platform linux/arm64 -t zoomgate-builder .
+#   docker run --rm -v $(pwd)/native/build:/output zoomgate-builder
+#
+# The compiled zoom_worker binary will appear in native/build/
+
+FROM debian:bookworm-slim AS builder
+
+RUN apt-get update -y && \
+    apt-get install -y cmake g++ pkg-config && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY native/ ./
+
+RUN mkdir -p build && cd build && cmake .. && make
+
+FROM scratch AS export
+COPY --from=builder /build/build/zoom_worker /output/zoom_worker

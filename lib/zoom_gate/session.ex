@@ -404,10 +404,26 @@ defmodule ZoomGate.Session do
 
   defp build_worker_args(opts) do
     meeting_id = Keyword.fetch!(opts, :meeting_id)
-    sdk_key = Keyword.get(opts, :sdk_key, "")
-    sdk_secret = Keyword.get(opts, :sdk_secret, "")
     password = Keyword.get(opts, :meeting_password, "")
 
-    [meeting_id, sdk_key, sdk_secret, password]
+    # Generate JWT for SDK auth (real worker uses JWT, mock worker ignores it)
+    jwt_token =
+      case {Keyword.get(opts, :sdk_key), Keyword.get(opts, :sdk_secret)} do
+        {key, secret} when is_binary(key) and key != "" and is_binary(secret) and secret != "" ->
+          ZoomGate.SdkJwt.generate(key, secret)
+
+        _ ->
+          # Fall back to app-level config
+          key = Application.get_env(:zoom_gate, :zoom_sdk_key, "")
+          secret = Application.get_env(:zoom_gate, :zoom_sdk_secret, "")
+
+          if key != "" and secret != "" do
+            ZoomGate.SdkJwt.generate(key, secret)
+          else
+            ""
+          end
+      end
+
+    [meeting_id, jwt_token, password]
   end
 end

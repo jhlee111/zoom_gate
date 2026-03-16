@@ -41,6 +41,7 @@ defmodule ZoomGate.SessionTest do
 
       SessionSupervisor.leave_meeting(mid)
       assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2000
+      Process.sleep(50)
       assert Session.whereis(mid) == nil
     end
   end
