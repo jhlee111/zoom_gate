@@ -1,0 +1,11 @@
+.git
+_build
+deps
+.elixir_ls
+.mcp.json
+native/build
+native/zoom-meeting-sdk
+test
+.claude
+*.md
+docker-compose.yml

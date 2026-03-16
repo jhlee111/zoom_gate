@@ -8,6 +8,7 @@ defmodule ZoomGate.MixProject do
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
+      releases: releases(),
       deps: deps(),
       description: "Zoom Meeting SDK bridge — waiting room access control as a service",
       package: package()
@@ -32,6 +33,15 @@ defmodule ZoomGate.MixProject do
 
       # Dev tools
       {:tidewave, "~> 0.5", only: :dev}
+    ]
+  end
+
+  defp releases do
+    [
+      zoom_gate: [
+        include_executables_for: [:unix],
+        rel_overlays: ["rel/overlays"]
+      ]
     ]
   end
 

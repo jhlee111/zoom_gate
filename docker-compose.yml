@@ -1,0 +1,22 @@
+services:
+  zoom_gate:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      SECRET_KEY_BASE: "dev-only-secret-key-base-that-is-at-least-64-bytes-long-for-development-use-only"
+      PORT: "4000"
+      PHX_HOST: "localhost"
+      ZOOM_SDK_KEY: "${ZOOM_SDK_KEY:-}"
+      ZOOM_SDK_SECRET: "${ZOOM_SDK_SECRET:-}"
+      ZOOM_GATE_API_KEY: "${ZOOM_GATE_API_KEY:-zg_dev_key}"
+      # BEAM cluster (uncomment for multi-node)
+      # RELEASE_NODE: "zoom_gate@zoom_gate"
+      # RELEASE_COOKIE: "shared_secret"
+      # CLUSTER_HOSTS: "gs_net@gs_net"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

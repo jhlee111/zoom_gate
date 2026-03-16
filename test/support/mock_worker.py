@@ -14,12 +14,19 @@ Commands:
 """
 
 import json
+import signal
 import sys
+
+# Suppress BrokenPipeError when port is closed
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 
 def emit(event):
-    sys.stdout.write(json.dumps(event) + "\n")
-    sys.stdout.flush()
+    try:
+        sys.stdout.write(json.dumps(event) + "\n")
+        sys.stdout.flush()
+    except BrokenPipeError:
+        sys.exit(0)
 
 
 def main():
