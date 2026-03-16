@@ -6,16 +6,17 @@ user_invocable: true
 
 # Release Skill for ZoomGate
 
-## Versioning (SemVer)
+## Versioning (SemVer) — Milestone Aligned
 
-```
-0.1.x — Core OTP + Protocol
-0.2.x — C++ SDK Worker
-0.3.x — WebSocket API
-0.4.x — REST API
-0.5.x — Docker deployment
-1.0.0 — Production ready
-```
+| Version | Milestone | Scope |
+|---------|-----------|-------|
+| `0.1.x` | P2: Core OTP | Session GenServer + Protocol |
+| `0.2.x` | P3: C++ SDK Worker | Native SDK wrapper |
+| `0.3.x` | P4: API Layer | WebSocket + REST + BEAM Cluster |
+| `0.4.x` | P5: Deployment | Docker image |
+| `1.0.0` | — | Production ready |
+
+Note: P1 (Zoom Marketplace App) is infra setup — no code release.
 
 ## Release Process
 
@@ -82,4 +83,5 @@ user_invocable: true
 - [ ] CHANGELOG.md updated
 - [ ] Version bumped in mix.exs
 - [ ] Related issues closed
+- [ ] Milestone closed if all issues done (`gh api repos/:owner/:repo/milestones/<N> -X PATCH -f state=closed`)
 - [ ] Docker build successful (if applicable)

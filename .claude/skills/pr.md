@@ -20,11 +20,19 @@ user_invocable: true
    git push -u origin <branch-name>
    ```
 
-3. Create PR with `gh pr create`:
+3. Identify the milestone for this work:
    ```bash
-   gh pr create --title "<title>" --body "$(cat <<'EOF'
+   gh issue view <number> --json milestone --jq '.milestone.title'
+   ```
+
+4. Create PR with `gh pr create`:
+   ```bash
+   gh pr create --milestone "<milestone>" --title "<title>" --body "$(cat <<'EOF'
    ## Summary
    - <bullet points>
+
+   ## Milestone
+   <milestone name> — <what this PR accomplishes toward the milestone>
 
    ## Related Issues
    Closes #<number>
@@ -60,4 +68,5 @@ docs/api-examples
 - [ ] `mix format` passes
 - [ ] `mix test` passes
 - [ ] Related issue linked with `Closes #N`
+- [ ] Milestone assigned (via `--milestone` flag)
 - [ ] No secrets or credentials in diff

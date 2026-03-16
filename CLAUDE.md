@@ -113,6 +113,8 @@ docker run -d -e ZOOM_SDK_KEY=... -e ZOOM_SDK_SECRET=... -p 4000:4000 zoomgate:l
 
 ### Branch Naming
 
+Format: `<type>/<milestone-short>-<description>`
+
 ```
 feature/p2-session-genserver
 feature/p3-cpp-worker
@@ -120,6 +122,8 @@ feature/p4-websocket-api
 fix/port-buffer-overflow
 docs/readme-api-examples
 ```
+
+Milestone short names: `p1`, `p2`, `p3`, `p4`, `p5`
 
 ### Commit Message Format
 
@@ -141,13 +145,17 @@ chore(docker): add multi-stage build
 
 ### Release Versioning
 
-Semantic versioning (SemVer):
-- `0.1.x` — Core OTP + Protocol
-- `0.2.x` — C++ SDK Worker
-- `0.3.x` — WebSocket API
-- `0.4.x` — REST API
-- `0.5.x` — Docker deployment
-- `1.0.0` — Production ready
+Semantic versioning (SemVer), aligned with milestones:
+
+| Version | Milestone | Scope |
+|---------|-----------|-------|
+| `0.1.x` | P2: Core OTP | Session GenServer + Protocol |
+| `0.2.x` | P3: C++ SDK Worker | Native SDK wrapper |
+| `0.3.x` | P4: API Layer | WebSocket + REST + BEAM Cluster |
+| `0.4.x` | P5: Deployment | Docker image |
+| `1.0.0` | — | Production ready |
+
+Note: P1 (Zoom Marketplace App) is infra setup — no code release.
 
 ---
 
@@ -179,13 +187,30 @@ GsNet consumes ZoomGate via BEAM cluster:
 
 ---
 
-## GitHub Issues
+## GitHub Project Tracking
 
 All work is tracked in GitHub issues: https://github.com/jhlee111/zoom_gate/issues
 
-- `phase:p1` through `phase:p5` — implementation phases
+### Milestones (Phases)
+
+Issues are organized into milestones representing implementation phases:
+
+| Milestone | Description |
+|-----------|-------------|
+| P1: Zoom Marketplace App | OAuth + Meeting SDK 설정 |
+| P2: Core OTP | Session GenServer + DynamicSupervisor |
+| P3: C++ SDK Worker | Zoom Native SDK C++ 래퍼 |
+| P4: API Layer | WebSocket, REST, BEAM Cluster API |
+| P5: Deployment | Docker image + deployment |
+
+Use `gh issue list --milestone "P2: Core OTP"` to filter by milestone.
+
+### Labels (Categories)
+
+Labels are for technology/category only — NOT for phases:
 - `research` — investigation tasks
 - `c++` — C++ SDK worker
 - `elixir` — Elixir/OTP
 - `api` — API layers
 - `infra` — infrastructure
+- `documentation` — docs
