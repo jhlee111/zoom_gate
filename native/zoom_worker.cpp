@@ -21,13 +21,16 @@
 #include <glib.h>
 #include <nlohmann/json.hpp>
 
-// Zoom SDK
+// Zoom SDK — include order matters for type dependencies
 #include "zoom_sdk.h"
+#include "zoom_sdk_def.h"
 #include "auth_service_interface.h"
 #include "meeting_service_interface.h"
+#include "meeting_service_components/meeting_audio_interface.h"
+#include "meeting_service_components/meeting_recording_interface.h"
+#include "meeting_service_components/meeting_participants_ctrl_interface.h"
 #include "meeting_service_components/meeting_waiting_room_interface.h"
 #include "meeting_service_components/meeting_chat_interface.h"
-#include "meeting_service_components/meeting_participants_ctrl_interface.h"
 
 using json = nlohmann::json;
 USING_ZOOM_SDK_NAMESPACE
