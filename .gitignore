@@ -21,3 +21,11 @@ zoom_gate-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Zoom Meeting SDK (download separately, do not commit)
+/native/zoom-meeting-sdk/
+/native/build/
+
+# Environment files
+.env
+.env.*
