@@ -7,6 +7,7 @@ defmodule ZoomGate.MixProject do
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
       description: "Zoom Meeting SDK bridge — waiting room access control as a service",
       package: package()
@@ -15,7 +16,7 @@ defmodule ZoomGate.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :inets],
       mod: {ZoomGate.Application, []}
     ]
   end
@@ -27,9 +28,15 @@ defmodule ZoomGate.MixProject do
       {:jason, "~> 1.4"},
       {:bandit, "~> 1.6"},
       {:libcluster, "~> 3.4"},
-      {:websock_adapter, "~> 0.5"}
+      {:websock_adapter, "~> 0.5"},
+
+      # Dev tools
+      {:tidewave, "~> 0.5", only: :dev}
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   defp package do
     [

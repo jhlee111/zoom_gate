@@ -1,0 +1,154 @@
+defmodule ZoomGate.ApiRouter do
+  @moduledoc """
+  REST API router for ZoomGate session management.
+
+  All endpoints require Bearer token authentication (see `ZoomGate.Plugs.ApiAuth`).
+
+  ## Endpoints
+
+      POST   /sessions                        Create bot session (join meeting)
+      GET    /sessions                        List active sessions
+      GET    /sessions/:meeting_id            Get session status
+      DELETE /sessions/:meeting_id            Stop session (leave meeting)
+      POST   /sessions/:meeting_id/admit      Admit from waiting room
+      POST   /sessions/:meeting_id/deny       Deny and remove from waiting room
+      POST   /sessions/:meeting_id/rename     Rename participant
+      POST   /sessions/:meeting_id/expel      Remove from meeting
+      POST   /sessions/:meeting_id/chat       Send chat message
+  """
+
+  use Plug.Router
+
+  plug(:match)
+  plug(ZoomGate.Plugs.ApiAuth)
+
+  plug(Plug.Parsers,
+    parsers: [:json],
+    pass: ["application/json"],
+    json_decoder: Jason
+  )
+
+  plug(:dispatch)
+
+  # -- Session lifecycle --
+
+  post "/sessions" do
+    meeting_id = conn.body_params["meeting_id"]
+
+    unless meeting_id do
+      send_json(conn, 422, %{error: "meeting_id is required"})
+    else
+      opts =
+        [
+          sdk_key: conn.body_params["sdk_key"] || "",
+          sdk_secret: conn.body_params["sdk_secret"] || "",
+          meeting_password: conn.body_params["meeting_password"] || ""
+        ]
+        |> maybe_put(:webhook_url, conn.body_params["webhook_url"])
+
+      case ZoomGate.SessionSupervisor.join_meeting(meeting_id, opts) do
+        {:ok, _pid} ->
+          send_json(conn, 201, %{meeting_id: meeting_id, status: "connecting"})
+
+        {:error, reason} ->
+          send_json(conn, 422, %{error: inspect(reason)})
+      end
+    end
+  end
+
+  get "/sessions" do
+    sessions =
+      ZoomGate.SessionSupervisor.list_sessions()
+      |> Enum.map(fn {meeting_id, _pid} -> %{meeting_id: meeting_id} end)
+
+    send_json(conn, 200, %{sessions: sessions})
+  end
+
+  get "/sessions/:meeting_id" do
+    case ZoomGate.Session.whereis(meeting_id) do
+      nil ->
+        send_json(conn, 404, %{error: "not_found"})
+
+      _pid ->
+        status = ZoomGate.Session.get_status(meeting_id)
+        send_json(conn, 200, status)
+    end
+  end
+
+  delete "/sessions/:meeting_id" do
+    case ZoomGate.SessionSupervisor.leave_meeting(meeting_id) do
+      :ok -> send_json(conn, 200, %{status: "left"})
+      {:error, :not_found} -> send_json(conn, 404, %{error: "not_found"})
+    end
+  end
+
+  # -- Session commands --
+
+  post "/sessions/:meeting_id/admit" do
+    with_session(conn, meeting_id, fn ->
+      zoom_user_id = conn.body_params["zoom_user_id"]
+      opts = if dn = conn.body_params["display_name"], do: [display_name: dn], else: []
+      ZoomGate.Session.admit(meeting_id, zoom_user_id, opts)
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/deny" do
+    with_session(conn, meeting_id, fn ->
+      zoom_user_id = conn.body_params["zoom_user_id"]
+      opts = if msg = conn.body_params["message"], do: [message: msg], else: []
+      ZoomGate.Session.deny(meeting_id, zoom_user_id, opts)
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/rename" do
+    with_session(conn, meeting_id, fn ->
+      ZoomGate.Session.rename(
+        meeting_id,
+        conn.body_params["zoom_user_id"],
+        conn.body_params["display_name"]
+      )
+
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/expel" do
+    with_session(conn, meeting_id, fn ->
+      ZoomGate.Session.expel(meeting_id, conn.body_params["zoom_user_id"])
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/chat" do
+    with_session(conn, meeting_id, fn ->
+      message = conn.body_params["message"]
+      opts = if to = conn.body_params["to"], do: [to: to], else: []
+      ZoomGate.Session.send_chat(meeting_id, message, opts)
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  match _ do
+    send_json(conn, 404, %{error: "not_found"})
+  end
+
+  # -- Helpers --
+
+  defp send_json(conn, status, body) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(status, Jason.encode!(body))
+  end
+
+  defp with_session(conn, meeting_id, fun) do
+    case ZoomGate.Session.whereis(meeting_id) do
+      nil -> send_json(conn, 404, %{error: "session not found"})
+      _pid -> fun.()
+    end
+  end
+
+  defp maybe_put(opts, _key, nil), do: opts
+  defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
+end

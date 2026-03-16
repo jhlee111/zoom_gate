@@ -6,7 +6,6 @@ defmodule ZoomGate.Protocol do
 
   ## Commands (Elixir → C++ worker via stdin)
 
-      {"command": "join", "meeting_id": "123", "sdk_key": "...", "sdk_secret": "..."}
       {"command": "admit", "zoom_user_id": 12345, "display_name": "홍길동 (강남)"}
       {"command": "deny", "zoom_user_id": 12345, "message": "Not authorized"}
       {"command": "rename", "zoom_user_id": 12345, "display_name": "New Name"}
@@ -23,18 +22,13 @@ defmodule ZoomGate.Protocol do
       {"event": "participant_left", "zoom_user_id": 12345}
       {"event": "meeting_ended"}
       {"event": "error", "code": 1234, "message": "SDK error description"}
-
-  ## Design Principles
-
-  - One JSON object per line (newline-delimited)
-  - Worker is stateless I/O — zero business logic
-  - Worker crashes are detected via Port exit_status
-  - All string values are UTF-8
   """
 
+  @valid_commands ~w(admit deny rename expel chat leave simulate crash)
+  @valid_events ~w(joined waiting_room_join waiting_room_leave participant_joined participant_left meeting_ended error)
+
   @type command ::
-          :join
-          | :admit
+          :admit
           | :deny
           | :rename
           | :expel
@@ -67,4 +61,12 @@ defmodule ZoomGate.Protocol do
     |> String.trim()
     |> Jason.decode()
   end
+
+  @doc "Returns true if the given command name string is valid."
+  def valid_command?(name) when name in @valid_commands, do: true
+  def valid_command?(_), do: false
+
+  @doc "Returns true if the given event name string is valid."
+  def valid_event?(name) when name in @valid_events, do: true
+  def valid_event?(_), do: false
 end

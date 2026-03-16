@@ -80,12 +80,16 @@ defmodule ZoomGate.GateChannel do
 
   @impl true
   def handle_info(:subscribe_to_session, socket) do
-    # Register this channel process as the callback for the session
     meeting_id = socket.assigns.meeting_id
 
     case ZoomGate.Session.whereis(meeting_id) do
-      nil -> {:noreply, socket}
-      pid -> Process.monitor(pid); {:noreply, socket}
+      nil ->
+        {:noreply, socket}
+
+      pid ->
+        ZoomGate.Session.subscribe(meeting_id)
+        Process.monitor(pid)
+        {:noreply, socket}
     end
   end
 

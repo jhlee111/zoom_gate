@@ -6,6 +6,9 @@ defmodule ZoomGate.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      # PubSub for Phoenix Channels
+      {Phoenix.PubSub, name: ZoomGate.PubSub},
+
       # Process registry for meeting sessions
       {Registry, keys: :unique, name: ZoomGate.Registry},
 

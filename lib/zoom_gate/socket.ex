@@ -8,12 +8,20 @@ defmodule ZoomGate.Socket do
 
   use Phoenix.Socket
 
-  channel "gate:*", ZoomGate.GateChannel
+  channel("gate:*", ZoomGate.GateChannel)
 
   @impl true
   def connect(params, socket, _connect_info) do
-    # TODO: API key authentication
-    {:ok, assign(socket, :api_key, params["api_key"])}
+    configured_key = Application.get_env(:zoom_gate, :api_key)
+
+    if is_nil(configured_key) or configured_key == "" do
+      {:ok, socket}
+    else
+      case params["api_key"] do
+        key when key == configured_key -> {:ok, socket}
+        _ -> :error
+      end
+    end
   end
 
   @impl true

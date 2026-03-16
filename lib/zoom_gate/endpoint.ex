@@ -9,14 +9,20 @@ defmodule ZoomGate.Endpoint do
 
   use Phoenix.Endpoint, otp_app: :zoom_gate
 
-  socket "/ws", ZoomGate.Socket,
+  if Code.ensure_loaded?(Tidewave) do
+    plug(Tidewave)
+  end
+
+  socket("/ws", ZoomGate.Socket,
     websocket: [timeout: :infinity],
     longpoll: false
+  )
 
-  plug Plug.Parsers,
+  plug(Plug.Parsers,
     parsers: [:json],
     pass: ["application/json"],
     json_decoder: Jason
+  )
 
-  plug ZoomGate.Router
+  plug(ZoomGate.Router)
 end

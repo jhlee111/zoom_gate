@@ -6,7 +6,7 @@ defmodule ZoomGate.Session do
   1. Opens a Port to the C++ SDK worker binary
   2. Sends commands (admit, deny, rename, expel, chat) via stdin
   3. Receives SDK events (waiting_room_join, participant_left) via stdout
-  4. Forwards events to the registered callback (PID, MFA, or webhook URL)
+  4. Forwards events to subscribers, callbacks, and webhooks
 
   ## Lifecycle
 
@@ -23,7 +23,7 @@ defmodule ZoomGate.Session do
 
   require Logger
 
-  @worker_binary "zoom_worker"
+  alias ZoomGate.Protocol
 
   # -- Public API --
 
@@ -46,6 +46,21 @@ defmodule ZoomGate.Session do
       [{pid, _}] -> pid
       [] -> nil
     end
+  end
+
+  @doc "Subscribe a process to receive `{:zoom_gate, {event_type, payload}}` messages."
+  def subscribe(meeting_id, pid \\ self()) do
+    GenServer.call(via(meeting_id), {:subscribe, pid})
+  end
+
+  @doc "Unsubscribe a process from session events."
+  def unsubscribe(meeting_id, pid \\ self()) do
+    GenServer.call(via(meeting_id), {:unsubscribe, pid})
+  end
+
+  @doc "Returns session status: meeting_id, status, participants, and waiting_room."
+  def get_status(meeting_id) do
+    GenServer.call(via(meeting_id), :get_status)
   end
 
   def admit(meeting_id, zoom_user_id, opts \\ []) do
@@ -84,6 +99,7 @@ defmodule ZoomGate.Session do
       port_buffer: "",
       participants: %{},
       waiting_room: %{},
+      subscribers: MapSet.new(),
       status: :initializing
     }
 
@@ -93,21 +109,49 @@ defmodule ZoomGate.Session do
   @impl true
   def handle_continue({:start_worker, opts}, state) do
     worker_path = worker_executable_path()
-
     args = build_worker_args(opts)
 
+    {executable, port_args} = build_port_command(worker_path, args)
+
     port =
-      Port.open({:spawn_executable, worker_path}, [
+      Port.open({:spawn_executable, executable}, [
         :binary,
         :exit_status,
         :use_stdio,
-        {:args, args},
+        {:args, port_args},
         {:line, 4096}
       ])
 
     Logger.info("[ZoomGate] Session #{state.meeting_id}: worker started")
     {:noreply, %{state | port: port, status: :connecting}}
   end
+
+  # Subscribe / Unsubscribe
+
+  @impl true
+  def handle_call({:subscribe, pid}, _from, state) do
+    Process.monitor(pid)
+    {:reply, :ok, %{state | subscribers: MapSet.put(state.subscribers, pid)}}
+  end
+
+  @impl true
+  def handle_call({:unsubscribe, pid}, _from, state) do
+    {:reply, :ok, %{state | subscribers: MapSet.delete(state.subscribers, pid)}}
+  end
+
+  @impl true
+  def handle_call(:get_status, _from, state) do
+    status = %{
+      meeting_id: state.meeting_id,
+      status: state.status,
+      participants: state.participants,
+      waiting_room: state.waiting_room
+    }
+
+    {:reply, status, state}
+  end
+
+  # Commands
 
   @impl true
   def handle_call({:admit, zoom_user_id, opts}, _from, state) do
@@ -159,16 +203,28 @@ defmodule ZoomGate.Session do
     {:reply, :ok, state}
   end
 
-  # Port messages (SDK events from C++ worker)
+  # Port messages — partial line (buffer accumulation for lines > 4096 bytes)
+  @impl true
+  def handle_info({port, {:data, {:noeol, partial}}}, %{port: port} = state) do
+    {:noreply, %{state | port_buffer: state.port_buffer <> partial}}
+  end
+
+  # Port messages — complete line (SDK events from C++ worker)
   @impl true
   def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
-    case Jason.decode(line) do
+    full_line = state.port_buffer <> line
+    state = %{state | port_buffer: ""}
+
+    case Protocol.decode_event(full_line) do
       {:ok, event} ->
         state = handle_sdk_event(event, state)
         {:noreply, state}
 
       {:error, _} ->
-        Logger.warning("[ZoomGate] Session #{state.meeting_id}: unparseable worker output: #{line}")
+        Logger.warning(
+          "[ZoomGate] Session #{state.meeting_id}: unparseable worker output: #{full_line}"
+        )
+
         {:noreply, state}
     end
   end
@@ -181,6 +237,12 @@ defmodule ZoomGate.Session do
     {:stop, {:worker_exited, code}, %{state | port: nil, status: :terminated}}
   end
 
+  # Subscriber process died
+  @impl true
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
+    {:noreply, %{state | subscribers: MapSet.delete(state.subscribers, pid)}}
+  end
+
   @impl true
   def terminate(reason, state) do
     if state.port do
@@ -191,7 +253,7 @@ defmodule ZoomGate.Session do
     Logger.info("[ZoomGate] Session #{state.meeting_id}: terminated (#{inspect(reason)})")
   end
 
-  # -- Internal --
+  # -- Internal: SDK event handling --
 
   defp handle_sdk_event(%{"event" => "joined"}, state) do
     Logger.info("[ZoomGate] Session #{state.meeting_id}: bot joined meeting")
@@ -255,18 +317,34 @@ defmodule ZoomGate.Session do
     state
   end
 
-  defp deliver_event(%{callback: nil, webhook_url: nil}, _event), do: :ok
+  # -- Internal: event delivery (all channels) --
 
-  defp deliver_event(%{callback: pid}, event) when is_pid(pid) do
+  defp deliver_event(state, event) do
+    deliver_to_callback(state.callback, event)
+    deliver_to_webhook(state.webhook_url, event)
+
+    for pid <- state.subscribers do
+      send(pid, {:zoom_gate, event})
+    end
+
+    :ok
+  end
+
+  defp deliver_to_callback(nil, _event), do: :ok
+
+  defp deliver_to_callback(pid, event) when is_pid(pid) do
     send(pid, {:zoom_gate, event})
   end
 
-  defp deliver_event(%{callback: {mod, fun}}, event) do
+  defp deliver_to_callback({mod, fun}, event) do
     apply(mod, fun, [event])
   end
 
-  defp deliver_event(%{webhook_url: url}, event) when is_binary(url) do
-    # Webhook delivery is fire-and-forget; failures are logged
+  defp deliver_to_callback(_, _), do: :ok
+
+  defp deliver_to_webhook(nil, _event), do: :ok
+
+  defp deliver_to_webhook(url, event) when is_binary(url) do
     Task.start(fn ->
       {event_type, payload} = event
 
@@ -277,22 +355,40 @@ defmodule ZoomGate.Session do
           timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
         })
 
-      case :httpc.request(:post, {String.to_charlist(url), [], ~c"application/json", body}, [], []) do
+      case :httpc.request(
+             :post,
+             {String.to_charlist(url), [], ~c"application/json", body},
+             [],
+             []
+           ) do
         {:ok, {{_, status, _}, _, _}} when status in 200..299 -> :ok
         other -> Logger.warning("[ZoomGate] Webhook delivery failed: #{inspect(other)}")
       end
     end)
   end
 
-  defp deliver_event(_, _), do: :ok
+  defp deliver_to_webhook(_, _), do: :ok
+
+  # -- Internal: port communication --
 
   defp send_to_worker(port, command) do
-    json = Jason.encode!(command)
-    Port.command(port, json <> "\n")
+    Port.command(port, Protocol.encode_command(command))
   end
 
   defp worker_executable_path do
-    Application.get_env(:zoom_gate, :worker_path, @worker_binary)
+    Application.get_env(:zoom_gate, :worker_path, "zoom_worker")
+  end
+
+  defp build_port_command(worker_path, args) do
+    case Application.get_env(:zoom_gate, :worker_command) do
+      nil ->
+        {worker_path, args}
+
+      command ->
+        # For mock worker: python3 mock_worker.py meeting_id ...
+        executable = System.find_executable(command) || command
+        {executable, [worker_path | args]}
+    end
   end
 
   defp build_worker_args(opts) do
