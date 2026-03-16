@@ -71,6 +71,12 @@ defmodule ZoomGate.GateChannel do
     {:reply, :ok, socket}
   end
 
+  @impl true
+  def handle_in("chat_waiting_room", %{"message" => msg}, socket) do
+    ZoomGate.Session.chat_waiting_room(socket.assigns.meeting_id, msg)
+    {:reply, :ok, socket}
+  end
+
   # Forward session events to the WebSocket client
   @impl true
   def handle_info({:zoom_gate, {event_type, payload}}, socket) do

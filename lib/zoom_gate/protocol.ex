@@ -11,6 +11,7 @@ defmodule ZoomGate.Protocol do
       {"command": "rename", "zoom_user_id": 12345, "display_name": "New Name"}
       {"command": "expel", "zoom_user_id": 12345}
       {"command": "chat", "message": "Hello everyone", "to": 12345}
+      {"command": "chat_waiting_room", "message": "안녕하세요, 성함을 확인해주세요"}
       {"command": "leave"}
 
   ## Events (C++ worker → Elixir via stdout)
@@ -24,7 +25,7 @@ defmodule ZoomGate.Protocol do
       {"event": "error", "code": 1234, "message": "SDK error description"}
   """
 
-  @valid_commands ~w(admit deny rename expel chat leave simulate crash)
+  @valid_commands ~w(admit deny rename expel chat chat_waiting_room leave simulate crash)
   @valid_events ~w(joined waiting_room_join waiting_room_leave participant_joined participant_left meeting_ended error)
 
   @type command ::
@@ -33,6 +34,7 @@ defmodule ZoomGate.Protocol do
           | :rename
           | :expel
           | :chat
+          | :chat_waiting_room
           | :leave
 
   @type event ::

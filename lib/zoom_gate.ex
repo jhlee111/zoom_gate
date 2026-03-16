@@ -112,6 +112,14 @@ defmodule ZoomGate do
   defdelegate send_chat(meeting_id, message, opts \\ []), to: ZoomGate.Session
 
   @doc """
+  Sends a chat message to all participants in the waiting room.
+
+  Uses `SDKChatMessageType_To_WaitingRoomUsers` — broadcast only,
+  individual targeting is not supported by the Zoom SDK.
+  """
+  defdelegate chat_waiting_room(meeting_id, message), to: ZoomGate.Session
+
+  @doc """
   Stops the bot and leaves the meeting.
   """
   defdelegate leave_meeting(meeting_id), to: ZoomGate.SessionSupervisor

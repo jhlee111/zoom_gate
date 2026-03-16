@@ -86,6 +86,13 @@ defmodule ZoomGate.SessionTest do
 
       assert :ok = Session.send_chat(mid, "Hello!", to: 42)
     end
+
+    test "chat_waiting_room sends command (no event expected)" do
+      mid = unique_id()
+      _pid = start_session(mid)
+
+      assert :ok = Session.chat_waiting_room(mid, "안녕하세요, 성함을 확인해주세요")
+    end
   end
 
   describe "events / simulate" do

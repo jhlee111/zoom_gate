@@ -83,6 +83,11 @@ defmodule ZoomGate.Session do
     GenServer.call(via(meeting_id), {:send_chat, message, opts})
   end
 
+  @doc "Sends a chat message to all participants in the waiting room (broadcast)."
+  def chat_waiting_room(meeting_id, message) do
+    GenServer.call(via(meeting_id), {:chat_waiting_room, message})
+  end
+
   # -- GenServer Callbacks --
 
   @impl true
@@ -200,6 +205,12 @@ defmodule ZoomGate.Session do
     cmd = if to, do: Map.put(cmd, :to, to), else: cmd
 
     send_to_worker(state.port, cmd)
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:chat_waiting_room, message}, _from, state) do
+    send_to_worker(state.port, %{command: "chat_waiting_room", message: message})
     {:reply, :ok, state}
   end
 

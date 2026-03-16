@@ -15,6 +15,7 @@ defmodule ZoomGate.ApiRouter do
       POST   /sessions/:meeting_id/rename     Rename participant
       POST   /sessions/:meeting_id/expel      Remove from meeting
       POST   /sessions/:meeting_id/chat       Send chat message
+      POST   /sessions/:meeting_id/chat_waiting_room  Chat to waiting room
   """
 
   use Plug.Router
@@ -126,6 +127,14 @@ defmodule ZoomGate.ApiRouter do
       message = conn.body_params["message"]
       opts = if to = conn.body_params["to"], do: [to: to], else: []
       ZoomGate.Session.send_chat(meeting_id, message, opts)
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/chat_waiting_room" do
+    with_session(conn, meeting_id, fn ->
+      message = conn.body_params["message"]
+      ZoomGate.Session.chat_waiting_room(meeting_id, message)
       send_json(conn, 200, %{status: "ok"})
     end)
   end

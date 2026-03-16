@@ -97,6 +97,11 @@ defmodule ZoomGate.GateChannelTest do
       ref = push(socket, "chat", %{"message" => "Hello"})
       assert_reply(ref, :ok)
     end
+
+    test "chat_waiting_room succeeds", %{socket: socket} do
+      ref = push(socket, "chat_waiting_room", %{"message" => "안녕하세요"})
+      assert_reply(ref, :ok)
+    end
   end
 
   describe "session death" do

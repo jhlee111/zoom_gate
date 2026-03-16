@@ -213,6 +213,20 @@ defmodule ZoomGate.RouterTest do
       ZoomGate.SessionSupervisor.leave_meeting(mid)
     end
 
+    test "POST /api/sessions/:id/chat_waiting_room", %{meeting_id: mid} do
+      conn =
+        conn(
+          :post,
+          "/api/sessions/#{mid}/chat_waiting_room",
+          Jason.encode!(%{message: "안녕하세요"})
+        )
+        |> call_api()
+
+      assert conn.status == 200
+
+      ZoomGate.SessionSupervisor.leave_meeting(mid)
+    end
+
     test "returns 404 for command on nonexistent session" do
       conn =
         conn(:post, "/api/sessions/fake/admit", Jason.encode!(%{zoom_user_id: 1}))

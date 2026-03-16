@@ -65,6 +65,8 @@ def main():
             pass  # No SDK response for rename
         elif command == "chat":
             pass  # No SDK response for chat
+        elif command == "chat_waiting_room":
+            pass  # No SDK response for waiting room chat
         elif command == "leave":
             emit({"event": "meeting_ended"})
             sys.exit(0)
