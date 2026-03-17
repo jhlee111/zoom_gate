@@ -303,6 +303,18 @@ curl -X POST http://localhost:4000/api/sessions \
 | Image | 223MB | — | — |
 | Start time | <1s | — | — |
 
+## Acknowledgements
+
+ZoomGate's RWG (Real-time Web Gateway) WebSocket protocol implementation was inspired by
+[Zoomer](https://github.com/nicksherron/zoomer), a Go-based Zoom meeting bot that pioneered
+the reverse-engineering of Zoom's `as_type=1` plaintext JSON WebSocket protocol.
+
+ZoomGate extends this work with:
+- **Binary framing support** (`as_type=2`) matching the Web SDK's native wire format
+- **Waiting room protocol** — full admit/deny flow verified via live WebSocket capture
+- **OTP supervision** — per-meeting GenServer with automatic reconnection
+- **Three API layers** — BEAM cluster, WebSocket, REST
+
 ## License
 
 MIT
