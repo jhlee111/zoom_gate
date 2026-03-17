@@ -23,12 +23,18 @@ defmodule ZoomGate.SessionSupervisor do
   Returns `{:ok, pid}` or `{:error, reason}`.
   """
   def join_meeting(meeting_id, opts) do
-    spec = {ZoomGate.Session, [{:meeting_id, meeting_id} | opts]}
+    max = Application.get_env(:zoom_gate, :max_sessions, 100)
 
-    case DynamicSupervisor.start_child(__MODULE__, spec) do
-      {:ok, pid} -> {:ok, pid}
-      {:error, {:already_started, pid}} -> {:ok, pid}
-      error -> error
+    if count_sessions() >= max do
+      {:error, :max_sessions_reached}
+    else
+      spec = {ZoomGate.Session, [{:meeting_id, meeting_id} | opts]}
+
+      case DynamicSupervisor.start_child(__MODULE__, spec) do
+        {:ok, pid} -> {:ok, pid}
+        {:error, {:already_started, pid}} -> {:ok, pid}
+        error -> error
+      end
     end
   end
 
@@ -47,5 +53,11 @@ defmodule ZoomGate.SessionSupervisor do
   """
   def list_sessions do
     Registry.select(ZoomGate.Registry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+  end
+
+  @doc "Returns the number of active sessions."
+  def count_sessions do
+    %{active: active} = DynamicSupervisor.count_children(__MODULE__)
+    active
   end
 end

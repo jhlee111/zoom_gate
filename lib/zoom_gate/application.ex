@@ -5,25 +5,28 @@ defmodule ZoomGate.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      # PubSub for Phoenix Channels
-      {Phoenix.PubSub, name: ZoomGate.PubSub},
+    children =
+      [
+        # PubSub for Phoenix Channels + distributed event delivery
+        {Phoenix.PubSub, name: ZoomGate.PubSub},
 
-      # Process registry for meeting sessions
-      {Registry, keys: :unique, name: ZoomGate.Registry},
+        # Process registry for meeting sessions
+        {Registry, keys: :unique, name: ZoomGate.Registry},
 
-      # Dynamic supervisor for per-meeting bot sessions
-      {ZoomGate.SessionSupervisor, []},
+        # Dynamic supervisor for per-meeting bot sessions
+        # shutdown: 15s to allow bots to leave meetings gracefully
+        {ZoomGate.SessionSupervisor, []},
 
-      # Phoenix endpoint (WebSocket + REST API)
-      {ZoomGate.Endpoint, []},
+        # Phoenix endpoint (WebSocket + REST API)
+        {ZoomGate.Endpoint, []},
 
-      # Cluster formation (connects to BEAM peers like GsNet)
-      cluster_supervisor()
-    ]
+        # Cluster formation (connects to BEAM peers like GsNet)
+        cluster_supervisor()
+      ]
+      |> Enum.reject(&is_nil/1)
 
     opts = [strategy: :one_for_one, name: ZoomGate.Supervisor]
-    Supervisor.start_link(Enum.reject(children, &is_nil/1), opts)
+    Supervisor.start_link(children, opts)
   end
 
   defp cluster_supervisor do

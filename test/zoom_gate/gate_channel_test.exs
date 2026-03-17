@@ -71,14 +71,17 @@ defmodule ZoomGate.GateChannelTest do
       ref = push(socket, "admit", %{"zoom_user_id" => 100, "display_name" => "Test"})
       assert_reply(ref, :ok)
 
-      assert_push("participant_joined", %{zoom_user_id: 100, display_name: "Test"}, 2000)
+      # admit (put_on_hold=false) produces waiting_room_leave then participant_joined
+      assert_push("waiting_room_leave", %{zoom_user_id: 100}, 2000)
+      assert_push("participant_joined", %{zoom_user_id: 100}, 2000)
     end
 
-    test "deny pushes waiting_room_leave event", %{socket: socket} do
+    test "deny pushes participant_left event", %{socket: socket} do
       ref = push(socket, "deny", %{"zoom_user_id" => 200})
       assert_reply(ref, :ok)
 
-      assert_push("waiting_room_leave", %{zoom_user_id: 200}, 2000)
+      # deny maps to RWG expel — mock responds with participant_left
+      assert_push("participant_left", %{zoom_user_id: 200}, 2000)
     end
 
     test "expel pushes participant_left event", %{socket: socket} do

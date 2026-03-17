@@ -11,8 +11,12 @@ defmodule ZoomGate.GateChannel do
       channel.join()
 
       // Send commands
-      channel.push("admit", {zoom_user_id: 12345, display_name: "홍길동"})
-      channel.push("deny", {zoom_user_id: 12345, message: "Not authorized"})
+      channel.push("admit", {zoom_user_id: 12345})
+      channel.push("deny", {zoom_user_id: 12345})
+      channel.push("rename", {zoom_user_id: 12345, display_name: "New Name"})
+      channel.push("admit_all", {})
+      channel.push("mute", {zoom_user_id: 12345})
+      channel.push("end_meeting", {})
 
       // Receive events
       channel.on("waiting_room_join", ({zoom_user_id, display_name}) => ...)
@@ -31,8 +35,6 @@ defmodule ZoomGate.GateChannel do
         {:error, %{reason: "no active session for meeting #{meeting_id}"}}
 
       _pid ->
-        # Subscribe to session events via Registry
-        # The session will deliver events to this channel process
         send(self(), :subscribe_to_session)
         {:ok, assign(socket, :meeting_id, meeting_id)}
     end
@@ -74,6 +76,24 @@ defmodule ZoomGate.GateChannel do
   @impl true
   def handle_in("chat_waiting_room", %{"message" => msg}, socket) do
     ZoomGate.Session.chat_waiting_room(socket.assigns.meeting_id, msg)
+    {:reply, :ok, socket}
+  end
+
+  @impl true
+  def handle_in("admit_all", _params, socket) do
+    ZoomGate.Session.admit_all(socket.assigns.meeting_id)
+    {:reply, :ok, socket}
+  end
+
+  @impl true
+  def handle_in("mute", %{"zoom_user_id" => zid}, socket) do
+    ZoomGate.Session.mute(socket.assigns.meeting_id, zid)
+    {:reply, :ok, socket}
+  end
+
+  @impl true
+  def handle_in("end_meeting", _params, socket) do
+    ZoomGate.Session.end_meeting(socket.assigns.meeting_id)
     {:reply, :ok, socket}
   end
 

@@ -36,10 +36,13 @@ defmodule ZoomGate.RouterTest do
   end
 
   describe "health check" do
-    test "GET /health returns ok" do
+    test "GET /health returns ok with session counts" do
       conn = conn(:get, "/health") |> call()
       assert conn.status == 200
-      assert json_body(conn)["status"] == "ok"
+      body = json_body(conn)
+      assert body["status"] == "ok"
+      assert is_integer(body["sessions"])
+      assert is_integer(body["max_sessions"])
     end
   end
 
@@ -162,6 +165,8 @@ defmodule ZoomGate.RouterTest do
         |> call_api()
 
       assert conn.status == 200
+      # admit (put_on_hold=false) produces waiting_room_leave then participant_joined
+      assert_receive {:zoom_gate, {:waiting_room_leave, %{zoom_user_id: 1}}}, 2000
       assert_receive {:zoom_gate, {:participant_joined, %{zoom_user_id: 1}}}, 2000
 
       ZoomGate.SessionSupervisor.leave_meeting(mid)
@@ -173,7 +178,8 @@ defmodule ZoomGate.RouterTest do
         |> call_api()
 
       assert conn.status == 200
-      assert_receive {:zoom_gate, {:waiting_room_leave, %{zoom_user_id: 2}}}, 2000
+      # deny maps to RWG expel — mock responds with participant_left
+      assert_receive {:zoom_gate, {:participant_left, %{zoom_user_id: 2}}}, 2000
 
       ZoomGate.SessionSupervisor.leave_meeting(mid)
     end

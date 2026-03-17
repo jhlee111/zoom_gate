@@ -3,27 +3,25 @@ defmodule ZoomGate.Session do
   GenServer managing a single Zoom meeting bot session.
 
   Each session:
-  1. Opens a Port to the C++ SDK worker binary
-  2. Sends commands (admit, deny, rename, expel, chat) via stdin
-  3. Receives SDK events (waiting_room_join, participant_left) via stdout
-  4. Forwards events to subscribers, callbacks, and webhooks
+  1. Starts a MeetingBot GenServer (pure Elixir RWG WebSocket client)
+  2. Receives events from MeetingBot via `{:meeting_bot_event, event}` messages
+  3. Forwards events to subscribers, callbacks, and webhooks
+  4. Translates API commands into MeetingBot calls
 
   ## Lifecycle
 
       Session.start_link(meeting_id: "123", sdk_key: "...", ...)
-        → Port.open(zoom_worker)
-        → SDK init + join meeting
+        → MeetingBot.start_link(...)
+        → WebSocket connect → RWG join
         → monitoring waiting room
         → ...events flow...
-        → meeting ends or leave_meeting called
-        → Port closes, GenServer terminates
+        → meeting ends or leave called
+        → MeetingBot terminates, Session terminates
   """
 
   use GenServer, restart: :temporary
 
   require Logger
-
-  alias ZoomGate.Protocol
 
   # -- Public API --
 
@@ -88,6 +86,18 @@ defmodule ZoomGate.Session do
     GenServer.call(via(meeting_id), {:chat_waiting_room, message})
   end
 
+  def admit_all(meeting_id) do
+    GenServer.call(via(meeting_id), :admit_all)
+  end
+
+  def mute(meeting_id, zoom_user_id) do
+    GenServer.call(via(meeting_id), {:mute, zoom_user_id})
+  end
+
+  def end_meeting(meeting_id) do
+    GenServer.call(via(meeting_id), :end_meeting)
+  end
+
   # -- GenServer Callbacks --
 
   @impl true
@@ -98,41 +108,59 @@ defmodule ZoomGate.Session do
 
     state = %{
       meeting_id: meeting_id,
-      meeting_password: Keyword.get(opts, :meeting_password, ""),
-      display_name: Keyword.get(opts, :display_name, "ZoomGate-Bot"),
-      role: if(Keyword.get(opts, :join_as) == :host, do: 1, else: 0),
       callback: callback,
       webhook_url: webhook_url,
-      port: nil,
-      port_buffer: "",
+      meeting_bot: nil,
       participants: %{},
       waiting_room: %{},
       subscribers: MapSet.new(),
       status: :initializing
     }
 
-    {:ok, state, {:continue, {:start_worker, opts}}}
+    {:ok, state, {:continue, {:start_meeting_bot, opts}}}
   end
 
   @impl true
-  def handle_continue({:start_worker, opts}, state) do
-    {executable, port_args, env} = build_port_command(opts)
+  def handle_continue({:start_meeting_bot, opts}, state) do
+    worker_mod = Application.get_env(:zoom_gate, :bot_module, ZoomGate.MeetingBot)
 
-    port =
-      Port.open({:spawn_executable, executable}, [
-        :binary,
-        :exit_status,
-        :use_stdio,
-        {:args, port_args},
-        {:env, env},
-        {:line, 16_384}
-      ])
+    sdk_key =
+      Keyword.get(opts, :sdk_key) || Application.get_env(:zoom_gate, :zoom_sdk_key, "")
 
-    Logger.info("[ZoomGate] Session #{state.meeting_id}: worker started (#{executable})")
-    {:noreply, %{state | port: port, status: :connecting}}
+    sdk_secret =
+      Keyword.get(opts, :sdk_secret) || Application.get_env(:zoom_gate, :zoom_sdk_secret, "")
+
+    zak = Keyword.get(opts, :zak) || Application.get_env(:zoom_gate, :zoom_zak, "")
+
+    meeting_bot_opts = [
+      meeting_number: state.meeting_id,
+      password: Keyword.get(opts, :meeting_password, ""),
+      display_name: Keyword.get(opts, :display_name, "ZoomGate-Bot"),
+      sdk_key: sdk_key,
+      sdk_secret: sdk_secret,
+      zak: zak,
+      role: if(zak != "", do: 1, else: 0),
+      session_pid: self()
+    ]
+
+    # Use GenServer.start (not start_link) to avoid linking — Session monitors
+    # the MeetingBot independently, so a :kill signal won't propagate.
+    case GenServer.start(worker_mod, meeting_bot_opts) do
+      {:ok, pid} ->
+        Process.monitor(pid)
+        Logger.info("[ZoomGate] Session #{state.meeting_id}: MeetingBot started")
+        {:noreply, %{state | meeting_bot: pid, status: :connecting}}
+
+      {:error, reason} ->
+        Logger.error(
+          "[ZoomGate] Session #{state.meeting_id}: MeetingBot start failed: #{inspect(reason)}"
+        )
+
+        {:stop, {:meeting_bot_failed, reason}, state}
+    end
   end
 
-  # Subscribe / Unsubscribe
+  # -- Subscribe / Unsubscribe --
 
   @impl true
   def handle_call({:subscribe, pid}, _from, state) do
@@ -157,96 +185,149 @@ defmodule ZoomGate.Session do
     {:reply, status, state}
   end
 
-  # Commands
+  # -- Commands --
 
   @impl true
-  def handle_call({:admit, zoom_user_id, opts}, _from, state) do
-    display_name = Keyword.get(opts, :display_name)
-
-    cmd = %{command: "admit", zoom_user_id: zoom_user_id}
-    cmd = if display_name, do: Map.put(cmd, :display_name, display_name), else: cmd
-
-    send_to_worker(state.port, cmd)
+  def handle_call({:admit, zoom_user_id, _opts}, _from, state) do
+    worker_mod(state).put_on_hold(state.meeting_bot, zoom_user_id, false)
     {:reply, :ok, state}
   end
 
   @impl true
-  def handle_call({:deny, zoom_user_id, opts}, _from, state) do
-    message = Keyword.get(opts, :message)
-
-    cmd = %{command: "deny", zoom_user_id: zoom_user_id}
-    cmd = if message, do: Map.put(cmd, :message, message), else: cmd
-
-    send_to_worker(state.port, cmd)
+  def handle_call({:deny, zoom_user_id, _opts}, _from, state) do
+    worker_mod(state).expel(state.meeting_bot, zoom_user_id)
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_call({:rename, zoom_user_id, display_name}, _from, state) do
-    send_to_worker(state.port, %{
-      command: "rename",
-      zoom_user_id: zoom_user_id,
-      display_name: display_name
-    })
-
+    old_name = get_participant_name(state, zoom_user_id)
+    worker_mod(state).rename(state.meeting_bot, zoom_user_id, old_name, display_name)
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_call({:expel, zoom_user_id}, _from, state) do
-    send_to_worker(state.port, %{command: "expel", zoom_user_id: zoom_user_id})
+    worker_mod(state).expel(state.meeting_bot, zoom_user_id)
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_call({:send_chat, message, opts}, _from, state) do
-    to = Keyword.get(opts, :to)
-
-    cmd = %{command: "chat", message: message}
-    cmd = if to, do: Map.put(cmd, :to, to), else: cmd
-
-    send_to_worker(state.port, cmd)
+    to = Keyword.get(opts, :to, 0)
+    worker_mod(state).send_chat(state.meeting_bot, to, message)
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_call({:chat_waiting_room, message}, _from, state) do
-    send_to_worker(state.port, %{command: "chat_waiting_room", message: message})
+    # RWG doesn't have a WR-specific chat API — send to all (destNodeID=0)
+    worker_mod(state).send_chat(state.meeting_bot, 0, message)
     {:reply, :ok, state}
   end
 
-  # Port messages — partial line (buffer accumulation for lines > 4096 bytes)
   @impl true
-  def handle_info({port, {:data, {:noeol, partial}}}, %{port: port} = state) do
-    {:noreply, %{state | port_buffer: state.port_buffer <> partial}}
+  def handle_call(:admit_all, _from, state) do
+    worker_mod(state).admit_all(state.meeting_bot)
+    {:reply, :ok, state}
   end
 
-  # Port messages — complete line (SDK events from C++ worker)
   @impl true
-  def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
-    full_line = state.port_buffer <> line
-    state = %{state | port_buffer: ""}
-
-    case Protocol.decode_event(full_line) do
-      {:ok, event} ->
-        state = handle_sdk_event(event, state)
-        {:noreply, state}
-
-      {:error, _} ->
-        Logger.warning(
-          "[ZoomGate] Session #{state.meeting_id}: unparseable worker output: #{full_line}"
-        )
-
-        {:noreply, state}
-    end
+  def handle_call({:mute, zoom_user_id}, _from, state) do
+    worker_mod(state).mute(state.meeting_bot, zoom_user_id, true)
+    {:reply, :ok, state}
   end
 
-  # Worker process exited
   @impl true
-  def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
-    Logger.warning("[ZoomGate] Session #{state.meeting_id}: worker exited with code #{code}")
-    deliver_event(state, {:meeting_ended, %{reason: :worker_exit, exit_code: code}})
-    {:stop, {:worker_exited, code}, %{state | port: nil, status: :terminated}}
+  def handle_call(:end_meeting, _from, state) do
+    worker_mod(state).end_meeting(state.meeting_bot)
+    {:reply, :ok, state}
+  end
+
+  # -- MeetingBot Events --
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:joined, _join_info}}, state) do
+    Logger.info("[ZoomGate] Session #{state.meeting_id}: bot joined meeting")
+    deliver_event(state, {:bot_joined, %{meeting_id: state.meeting_id}})
+    {:noreply, %{state | status: :active}}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:participant_joined, participant}}, state) do
+    deliver_event(state, {:participant_joined, participant})
+    participants = Map.put(state.participants, participant.zoom_user_id, participant)
+    {:noreply, %{state | participants: participants}}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:participant_left, %{zoom_user_id: uid}}}, state) do
+    deliver_event(state, {:participant_left, %{zoom_user_id: uid}})
+    participants = Map.delete(state.participants, uid)
+    {:noreply, %{state | participants: participants}}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:waiting_room_join, participant}}, state) do
+    deliver_event(state, {:waiting_room_join, participant})
+    waiting_room = Map.put(state.waiting_room, participant.zoom_user_id, participant)
+    {:noreply, %{state | waiting_room: waiting_room}}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:waiting_room_leave, %{zoom_user_id: uid}}}, state) do
+    deliver_event(state, {:waiting_room_leave, %{zoom_user_id: uid}})
+    waiting_room = Map.delete(state.waiting_room, uid)
+    {:noreply, %{state | waiting_room: waiting_room}}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:participant_renamed, payload}}, state) do
+    deliver_event(state, {:participant_renamed, payload})
+    # Update display_name in local state
+    uid = payload.zoom_user_id
+    state = update_participant_name(state, uid, payload.new_name)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:chat_received, payload}}, state) do
+    deliver_event(state, {:chat_received, payload})
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:host_changed, payload}}, state) do
+    deliver_event(state, {:host_changed, payload})
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:meeting_ended, payload}}, state) do
+    Logger.info(
+      "[ZoomGate] Session #{state.meeting_id}: meeting ended (#{inspect(payload.reason)})"
+    )
+
+    deliver_event(state, {:meeting_ended, payload})
+    {:stop, :normal, %{state | status: :ended}}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:error, payload}}, state) do
+    Logger.error("[ZoomGate] Session #{state.meeting_id}: error: #{inspect(payload)}")
+    deliver_event(state, {:error, payload})
+    {:noreply, state}
+  end
+
+  # MeetingBot process died
+  @impl true
+  def handle_info({:DOWN, _ref, :process, pid, reason}, %{meeting_bot: pid} = state) do
+    Logger.warning(
+      "[ZoomGate] Session #{state.meeting_id}: MeetingBot exited: #{inspect(reason)}"
+    )
+
+    deliver_event(state, {:meeting_ended, %{reason: :worker_exit}})
+    {:stop, {:meeting_bot_exited, reason}, %{state | meeting_bot: nil, status: :terminated}}
   end
 
   # Subscriber process died
@@ -257,128 +338,28 @@ defmodule ZoomGate.Session do
 
   @impl true
   def terminate(reason, state) do
-    if state.port do
-      send_to_worker(state.port, %{command: "leave"})
-      Port.close(state.port)
+    if state.meeting_bot && Process.alive?(state.meeting_bot) do
+      try do
+        worker_mod(state).leave(state.meeting_bot)
+      catch
+        _, _ -> :ok
+      end
     end
 
     Logger.info("[ZoomGate] Session #{state.meeting_id}: terminated (#{inspect(reason)})")
   end
 
-  # -- Internal: SDK event handling --
-
-  defp handle_sdk_event(%{"event" => "ready"}, state) do
-    Logger.info("[ZoomGate] Session #{state.meeting_id}: worker ready, sending join command")
-
-    send_to_worker(state.port, %{
-      command: "join",
-      meeting_number: state.meeting_id,
-      password: state.meeting_password,
-      display_name: state.display_name,
-      role: state.role
-    })
-
-    %{state | status: :connecting}
-  end
-
-  defp handle_sdk_event(%{"event" => "joined"}, state) do
-    Logger.info("[ZoomGate] Session #{state.meeting_id}: bot joined meeting")
-    deliver_event(state, {:bot_joined, %{meeting_id: state.meeting_id}})
-    %{state | status: :active}
-  end
-
-  defp handle_sdk_event(%{"event" => "command_ok"} = data, state) do
-    Logger.debug("[ZoomGate] Session #{state.meeting_id}: command ok: #{data["command"]}")
-    state
-  end
-
-  defp handle_sdk_event(%{"event" => "user_updated"}, state) do
-    # Ignore user_updated events for now (noisy)
-    state
-  end
-
-  defp handle_sdk_event(%{"event" => "left"}, state) do
-    Logger.info("[ZoomGate] Session #{state.meeting_id}: bot left meeting")
-    deliver_event(state, {:meeting_ended, %{reason: :bot_left}})
-    %{state | status: :ended}
-  end
-
-  defp handle_sdk_event(%{"event" => "waiting_room_join"} = data, state) do
-    participant = %{
-      zoom_user_id: data["zoom_user_id"],
-      display_name: data["display_name"],
-      email: data["email"]
-    }
-
-    deliver_event(state, {:waiting_room_join, participant})
-
-    waiting_room = Map.put(state.waiting_room, data["zoom_user_id"], participant)
-    %{state | waiting_room: waiting_room}
-  end
-
-  defp handle_sdk_event(%{"event" => "waiting_room_leave"} = data, state) do
-    deliver_event(state, {:waiting_room_leave, %{zoom_user_id: data["zoom_user_id"]}})
-
-    waiting_room = Map.delete(state.waiting_room, data["zoom_user_id"])
-    %{state | waiting_room: waiting_room}
-  end
-
-  defp handle_sdk_event(%{"event" => "participant_joined"} = data, state) do
-    participant = %{
-      zoom_user_id: data["zoom_user_id"],
-      display_name: data["display_name"]
-    }
-
-    deliver_event(state, {:participant_joined, participant})
-
-    participants = Map.put(state.participants, data["zoom_user_id"], participant)
-    %{state | participants: participants}
-  end
-
-  defp handle_sdk_event(%{"event" => "participant_left"} = data, state) do
-    deliver_event(state, {:participant_left, %{zoom_user_id: data["zoom_user_id"]}})
-
-    participants = Map.delete(state.participants, data["zoom_user_id"])
-    %{state | participants: participants}
-  end
-
-  defp handle_sdk_event(%{"event" => "meeting_ended"}, state) do
-    Logger.info("[ZoomGate] Session #{state.meeting_id}: meeting ended")
-    deliver_event(state, {:meeting_ended, %{reason: :host_ended}})
-    %{state | status: :ended}
-  end
-
-  defp handle_sdk_event(%{"event" => "participants"} = data, state) do
-    participants =
-      (data["participants"] || [])
-      |> Enum.reduce(%{}, fn p, acc ->
-        Map.put(acc, p["userId"], %{
-          zoom_user_id: p["userId"],
-          display_name: p["displayName"] || p["userName"],
-          is_host: p["isHost"] || false
-        })
-      end)
-
-    Logger.debug("[ZoomGate] Session #{state.meeting_id}: #{map_size(participants)} participants")
-    %{state | participants: participants}
-  end
-
-  defp handle_sdk_event(%{"event" => "error"} = data, state) do
-    Logger.error("[ZoomGate] Session #{state.meeting_id}: SDK error: #{data["message"]}")
-    deliver_event(state, {:error, %{message: data["message"], code: data["code"]}})
-    state
-  end
-
-  defp handle_sdk_event(unknown, state) do
-    Logger.debug("[ZoomGate] Session #{state.meeting_id}: unknown event: #{inspect(unknown)}")
-    state
-  end
-
-  # -- Internal: event delivery (all channels) --
+  # -- Internal --
 
   defp deliver_event(state, event) do
     deliver_to_callback(state.callback, event)
     deliver_to_webhook(state.webhook_url, event)
+
+    Phoenix.PubSub.broadcast(
+      ZoomGate.PubSub,
+      "zoom_gate:#{state.meeting_id}",
+      {:zoom_gate, event}
+    )
 
     for pid <- state.subscribers do
       send(pid, {:zoom_gate, event})
@@ -426,37 +407,29 @@ defmodule ZoomGate.Session do
 
   defp deliver_to_webhook(_, _), do: :ok
 
-  # -- Internal: port communication --
-
-  defp send_to_worker(port, command) do
-    Port.command(port, Protocol.encode_command(command))
+  defp get_participant_name(state, zoom_user_id) do
+    case Map.get(state.participants, zoom_user_id) || Map.get(state.waiting_room, zoom_user_id) do
+      %{display_name: name} -> name
+      _ -> ""
+    end
   end
 
-  defp build_port_command(opts) do
-    node_path = System.find_executable("node") || "node"
+  defp update_participant_name(state, uid, new_name) do
+    cond do
+      Map.has_key?(state.participants, uid) ->
+        p = Map.update!(state.participants[uid], :display_name, fn _ -> new_name end)
+        %{state | participants: Map.put(state.participants, uid, p)}
 
-    worker_path =
-      Application.get_env(
-        :zoom_gate,
-        :worker_path,
-        Path.join(:code.priv_dir(:zoom_gate), "puppeteer-worker/zoom_worker.js")
-      )
+      Map.has_key?(state.waiting_room, uid) ->
+        p = Map.update!(state.waiting_room[uid], :display_name, fn _ -> new_name end)
+        %{state | waiting_room: Map.put(state.waiting_room, uid, p)}
 
-    sdk_key = Keyword.get(opts, :sdk_key) || Application.get_env(:zoom_gate, :zoom_sdk_key, "")
-    sdk_secret = Keyword.get(opts, :sdk_secret) || Application.get_env(:zoom_gate, :zoom_sdk_secret, "")
-    zak = Keyword.get(opts, :zak) || Application.get_env(:zoom_gate, :zoom_zak, "")
+      true ->
+        state
+    end
+  end
 
-    chrome_path = Application.get_env(:zoom_gate, :chrome_path, "")
-
-    env =
-      [
-        {~c"ZOOM_SDK_KEY", String.to_charlist(sdk_key)},
-        {~c"ZOOM_SDK_SECRET", String.to_charlist(sdk_secret)},
-        {~c"ZOOM_ZAK", String.to_charlist(zak)},
-        {~c"HEADLESS", ~c"true"}
-      ] ++
-        if chrome_path != "", do: [{~c"CHROME_PATH", String.to_charlist(chrome_path)}], else: []
-
-    {node_path, [worker_path], env}
+  defp worker_mod(_state) do
+    Application.get_env(:zoom_gate, :bot_module, ZoomGate.MeetingBot)
   end
 end

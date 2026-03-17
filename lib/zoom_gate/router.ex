@@ -9,12 +9,13 @@ defmodule ZoomGate.Router do
   plug(:dispatch)
 
   get "/health" do
-    sessions = ZoomGate.SessionSupervisor.list_sessions()
+    current = ZoomGate.SessionSupervisor.count_sessions()
+    max = Application.get_env(:zoom_gate, :max_sessions, 100)
 
     send_resp(
       conn,
       200,
-      Jason.encode!(%{status: "ok", sessions: length(sessions)})
+      Jason.encode!(%{status: "ok", sessions: current, max_sessions: max})
     )
   end
 

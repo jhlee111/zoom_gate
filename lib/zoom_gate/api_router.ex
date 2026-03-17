@@ -6,16 +6,19 @@ defmodule ZoomGate.ApiRouter do
 
   ## Endpoints
 
-      POST   /sessions                        Create bot session (join meeting)
-      GET    /sessions                        List active sessions
-      GET    /sessions/:meeting_id            Get session status
-      DELETE /sessions/:meeting_id            Stop session (leave meeting)
-      POST   /sessions/:meeting_id/admit      Admit from waiting room
-      POST   /sessions/:meeting_id/deny       Deny and remove from waiting room
-      POST   /sessions/:meeting_id/rename     Rename participant
-      POST   /sessions/:meeting_id/expel      Remove from meeting
-      POST   /sessions/:meeting_id/chat       Send chat message
+      POST   /sessions                           Create bot session (join meeting)
+      GET    /sessions                           List active sessions
+      GET    /sessions/:meeting_id               Get session status
+      DELETE /sessions/:meeting_id               Stop session (leave meeting)
+      POST   /sessions/:meeting_id/admit         Admit from waiting room
+      POST   /sessions/:meeting_id/deny          Deny and remove from waiting room
+      POST   /sessions/:meeting_id/rename        Rename participant
+      POST   /sessions/:meeting_id/expel         Remove from meeting
+      POST   /sessions/:meeting_id/chat          Send chat message
       POST   /sessions/:meeting_id/chat_waiting_room  Chat to waiting room
+      POST   /sessions/:meeting_id/admit_all     Admit all from waiting room
+      POST   /sessions/:meeting_id/mute          Mute a participant
+      POST   /sessions/:meeting_id/end_meeting   End meeting for all
   """
 
   use Plug.Router
@@ -46,6 +49,7 @@ defmodule ZoomGate.ApiRouter do
           meeting_password: conn.body_params["meeting_password"] || ""
         ]
         |> maybe_put(:webhook_url, conn.body_params["webhook_url"])
+        |> maybe_put(:display_name, conn.body_params["display_name"])
 
       case ZoomGate.SessionSupervisor.join_meeting(meeting_id, opts) do
         {:ok, _pid} ->
@@ -135,6 +139,27 @@ defmodule ZoomGate.ApiRouter do
     with_session(conn, meeting_id, fn ->
       message = conn.body_params["message"]
       ZoomGate.Session.chat_waiting_room(meeting_id, message)
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/admit_all" do
+    with_session(conn, meeting_id, fn ->
+      ZoomGate.Session.admit_all(meeting_id)
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/mute" do
+    with_session(conn, meeting_id, fn ->
+      ZoomGate.Session.mute(meeting_id, conn.body_params["zoom_user_id"])
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/end_meeting" do
+    with_session(conn, meeting_id, fn ->
+      ZoomGate.Session.end_meeting(meeting_id)
       send_json(conn, 200, %{status: "ok"})
     end)
   end

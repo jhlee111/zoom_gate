@@ -25,29 +25,72 @@ if config_env() == :prod do
     server: true
 
   config :zoom_gate,
-    worker_path: env!("ZOOM_GATE_WORKER_PATH", :string, "/app/bin/zoom_worker"),
-    api_key: env!("ZOOM_GATE_API_KEY", :string, nil)
+    api_key: env!("ZOOM_GATE_API_KEY", :string, nil),
+    max_sessions: env!("ZOOM_GATE_MAX_SESSIONS", :integer, 100)
 
-  # libcluster for BEAM cluster (connects to GsNet, etc.)
-  cluster_hosts =
-    case env!("CLUSTER_HOSTS", :string, nil) do
-      nil -> []
-      "" -> []
-      hosts -> hosts |> String.split(",") |> Enum.map(&String.to_atom/1)
+  # Logging
+  log_level =
+    case env!("ZOOM_GATE_LOG_LEVEL", :string, "info") do
+      "debug" -> :debug
+      "info" -> :info
+      "warning" -> :warning
+      "error" -> :error
+      _ -> :info
     end
 
-  if cluster_hosts != [] do
-    config :zoom_gate,
-      cluster_topologies: [
-        zoom_gate: [
-          strategy: Cluster.Strategy.Epmd,
-          config: [hosts: cluster_hosts]
+  config :logger, level: log_level
+
+  # -- Cluster strategy --
+  cluster_strategy = env!("CLUSTER_STRATEGY", :string, "epmd")
+
+  cluster_topologies =
+    case cluster_strategy do
+      "epmd" ->
+        case env!("CLUSTER_HOSTS", :string, nil) do
+          nil ->
+            []
+
+          "" ->
+            []
+
+          hosts ->
+            [
+              zoom_gate: [
+                strategy: Cluster.Strategy.Epmd,
+                config: [hosts: hosts |> String.split(",") |> Enum.map(&String.to_atom/1)]
+              ]
+            ]
+        end
+
+      "dns" ->
+        service = env!("CLUSTER_DNS_SERVICE", :string, "zoom-gate-headless")
+        app_name = env!("CLUSTER_DNS_APP_NAME", :string, "zoom_gate")
+
+        [
+          zoom_gate: [
+            strategy: Cluster.Strategy.Kubernetes.DNS,
+            config: [service: service, application_name: app_name]
+          ]
         ]
-      ]
+
+      "gossip" ->
+        [
+          zoom_gate: [
+            strategy: Cluster.Strategy.Gossip,
+            config: [port: env!("CLUSTER_GOSSIP_PORT", :integer, 45892)]
+          ]
+        ]
+
+      _ ->
+        []
+    end
+
+  if cluster_topologies != [] do
+    config :zoom_gate, cluster_topologies: cluster_topologies
   end
 end
 
-# Dev/test: load SDK credentials from .env
+# Dev/test: load SDK credentials from .env (convenience only)
 if config_env() in [:dev, :test] do
   config :zoom_gate,
     zoom_sdk_key: env!("ZOOM_SDK_KEY", :string, nil),
