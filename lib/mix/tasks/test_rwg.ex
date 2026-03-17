@@ -3,8 +3,8 @@ defmodule Mix.Tasks.TestRwg do
   Test RWG WebSocket connection in both as_type modes.
 
   Usage:
-    mix test_rwg --meeting MEETING_NUM --password PASSCODE --mode 1
-    mix test_rwg --meeting MEETING_NUM --password PASSCODE --mode 2
+    mix test_rwg --meeting MEETING_NUMBER --password PASSCODE --mode 1
+    mix test_rwg --meeting MEETING_NUMBER --password PASSCODE --mode 2
   """
   use Mix.Task
   require Logger

@@ -39,8 +39,8 @@ defmodule ZoomGate do
 
       # Join a meeting as host (with waiting room monitoring)
       ZoomGate.join_meeting("123456789",
-        sdk_key: "YOUR_SDK_KEY...",
-        sdk_secret: "abc123...",
+        sdk_key: "YOUR_SDK_KEY",
+        sdk_secret: "YOUR_SDK_SECRET",
         zak: "eyJ0eXAi...",
         callback: self()
       )

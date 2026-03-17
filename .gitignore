@@ -52,3 +52,16 @@ native/zoom-web-sdk-analysis/
 native/web-sdk-test/net_thread_*.min.js
 native/web-sdk-test/js_media_original.min.js
 native/web-sdk-test/zoomus-patched.umd.min.js
+
+# WebSocket capture files (contain session auth tokens)
+native/web-sdk-test/*.jsonl
+
+# Compiled test binaries
+native/test_auth
+
+# Scripts with hardcoded paths/credentials
+native/run_probe.sh
+native/zoom_join_test.py
+native/zoom_join_v2.py
+native/zoom_probe.py
+native/zoom_oauth.py
