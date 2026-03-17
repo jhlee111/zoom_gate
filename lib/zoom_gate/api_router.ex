@@ -21,6 +21,23 @@ defmodule ZoomGate.ApiRouter do
       POST   /sessions/:meeting_id/chat_waiting_room  Chat to waiting room (destNodeID=4)
       POST   /sessions/:meeting_id/mute               Mute a participant
       POST   /sessions/:meeting_id/end_meeting        End meeting for all
+
+  ## Error Responses
+
+  All errors return JSON:
+
+      {"error": "description"}
+
+  | Status | Meaning |
+  |--------|---------|
+  | 401 | Invalid or missing Bearer token |
+  | 404 | Session not found |
+  | 422 | Validation error (e.g., missing `meeting_id`) |
+
+  ## Authentication
+
+  Include `Authorization: Bearer <api_key>` header. If no API key is configured
+  on the server, authentication is skipped.
   """
 
   use Plug.Router

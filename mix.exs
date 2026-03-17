@@ -12,7 +12,8 @@ defmodule ZoomGate.MixProject do
       releases: releases(),
       deps: deps(),
       description: "Zoom Meeting SDK bridge — waiting room access control as a service",
-      package: package()
+      package: package(),
+      docs: docs()
     ]
   end
 
@@ -40,7 +41,11 @@ defmodule ZoomGate.MixProject do
       {:elixir_uuid, "~> 1.2"},
 
       # Dev tools
-      {:tidewave, "~> 0.5", only: :dev}
+      {:tidewave, "~> 0.5", only: :dev},
+
+      # Documentation
+      {:ex_doc, "~> 0.35", only: :dev, runtime: false},
+      {:open_api_spex, "~> 3.21"}
     ]
   end
 
@@ -55,6 +60,44 @@ defmodule ZoomGate.MixProject do
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
+
+  defp docs do
+    [
+      main: "ZoomGate",
+      source_url: "https://github.com/jhlee111/zoom_gate",
+      extras: [
+        "README.md",
+        "guides/session-lifecycle.md",
+        "guides/authentication.md",
+        "guides/webhooks.md",
+        "guides/error-reference.md"
+      ],
+      groups_for_extras: [
+        Guides: ~r/guides\/.*/
+      ],
+      groups_for_modules: [
+        Core: [
+          ZoomGate,
+          ZoomGate.Session,
+          ZoomGate.SessionSupervisor
+        ],
+        "API Layer": [
+          ZoomGate.Endpoint,
+          ZoomGate.Socket,
+          ZoomGate.GateChannel,
+          ZoomGate.ApiRouter,
+          ZoomGate.SessionController,
+          ZoomGate.ApiSpec
+        ],
+        "Meeting Bot": [
+          ZoomGate.MeetingBot,
+          ZoomGate.MeetingBot.Protocol,
+          ZoomGate.MeetingBot.Frame,
+          ZoomGate.MeetingBot.Participant
+        ]
+      ]
+    ]
+  end
 
   defp package do
     [

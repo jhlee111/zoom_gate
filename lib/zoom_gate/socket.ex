@@ -4,6 +4,14 @@ defmodule ZoomGate.Socket do
 
   Clients connect to `ws://host:4000/ws/gate` and join the `"gate:MEETING_ID"` channel
   to send commands and receive real-time events for a specific meeting.
+
+  ## Authentication
+
+  Pass `api_key` in connection params:
+
+      const socket = new Socket("ws://host:4000/ws/gate", {params: {api_key: "your-key"}})
+
+  If no API key is configured on the server, the `api_key` param is not required.
   """
 
   use Phoenix.Socket

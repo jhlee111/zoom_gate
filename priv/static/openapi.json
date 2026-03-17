@@ -1,0 +1,1085 @@
+{
+  "components": {
+    "responses": {
+      "NotFound": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Session not found"
+      },
+      "Unauthorized": {
+        "content": {
+          "application/json": {
+            "example": {
+              "error": "unauthorized"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Invalid or missing Bearer token"
+      }
+    },
+    "schemas": {
+      "AdmitRequest": {
+        "properties": {
+          "display_name": {
+            "description": "Optional display name override",
+            "type": "string"
+          },
+          "zoom_user_id": {
+            "description": "Zoom user ID to admit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "zoom_user_id"
+        ],
+        "type": "object"
+      },
+      "ChatRequest": {
+        "properties": {
+          "message": {
+            "description": "Chat message text",
+            "type": "string"
+          },
+          "to": {
+            "description": "Zoom user ID for private message (omit for broadcast)",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "ChatWaitingRoomRequest": {
+        "properties": {
+          "message": {
+            "description": "Message to send to all waiting room participants",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "CreateSessionRequest": {
+        "properties": {
+          "display_name": {
+            "description": "Bot display name in the meeting",
+            "type": "string"
+          },
+          "meeting_id": {
+            "description": "Zoom meeting ID",
+            "type": "string"
+          },
+          "meeting_password": {
+            "description": "Meeting password if required",
+            "type": "string"
+          },
+          "sdk_key": {
+            "description": "Zoom Meeting SDK key (overrides server config)",
+            "type": "string"
+          },
+          "sdk_secret": {
+            "description": "Zoom Meeting SDK secret (overrides server config)",
+            "type": "string"
+          },
+          "webhook_url": {
+            "description": "URL for event delivery via HTTP POST",
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "meeting_id"
+        ],
+        "type": "object"
+      },
+      "CreateSessionResponse": {
+        "properties": {
+          "meeting_id": {
+            "description": "Zoom meeting ID",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "connecting"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "meeting_id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "DenyRequest": {
+        "properties": {
+          "message": {
+            "description": "Optional denial message shown to the user",
+            "type": "string"
+          },
+          "zoom_user_id": {
+            "description": "Zoom user ID to deny",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "zoom_user_id"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "description": "Error message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "ExpelRequest": {
+        "properties": {
+          "zoom_user_id": {
+            "description": "Zoom user ID to remove from the meeting",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "zoom_user_id"
+        ],
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "max_sessions": {
+            "description": "Maximum allowed sessions",
+            "type": "integer"
+          },
+          "sessions": {
+            "description": "Current active session count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "ok"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "sessions",
+          "max_sessions"
+        ],
+        "type": "object"
+      },
+      "LeaveSessionResponse": {
+        "properties": {
+          "status": {
+            "enum": [
+              "left"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "ListSessionsResponse": {
+        "properties": {
+          "sessions": {
+            "items": {
+              "properties": {
+                "meeting_id": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "type": "object"
+      },
+      "MuteRequest": {
+        "properties": {
+          "zoom_user_id": {
+            "description": "Zoom user ID to mute",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "zoom_user_id"
+        ],
+        "type": "object"
+      },
+      "Participant": {
+        "description": "A meeting participant or waiting room entry.",
+        "properties": {
+          "display_name": {
+            "description": "Participant display name",
+            "type": "string"
+          },
+          "is_cohost": {
+            "description": "Whether the participant is a co-host",
+            "type": "boolean"
+          },
+          "is_host": {
+            "description": "Whether the participant is the host",
+            "type": "boolean"
+          },
+          "muted": {
+            "description": "Whether the participant's audio is muted",
+            "type": "boolean"
+          },
+          "role": {
+            "description": "Participant role (0=attendee, 1=host, 2=cohost)",
+            "type": "integer"
+          },
+          "video_on": {
+            "description": "Whether the participant's video is on",
+            "type": "boolean"
+          },
+          "zoom_user_id": {
+            "description": "Zoom user ID (changes on admit from waiting room)",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ParticipantMap": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/Participant"
+        },
+        "description": "Map of zoom_user_id (as string key) to Participant objects.",
+        "type": "object"
+      },
+      "ParticipantsResponse": {
+        "properties": {
+          "participants": {
+            "$ref": "#/components/schemas/ParticipantMap"
+          }
+        },
+        "required": [
+          "participants"
+        ],
+        "type": "object"
+      },
+      "RenameRequest": {
+        "properties": {
+          "display_name": {
+            "description": "New display name",
+            "type": "string"
+          },
+          "zoom_user_id": {
+            "description": "Zoom user ID to rename",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "zoom_user_id",
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "SessionStatusResponse": {
+        "properties": {
+          "meeting_id": {
+            "description": "Zoom meeting ID",
+            "type": "string"
+          },
+          "participants": {
+            "$ref": "#/components/schemas/ParticipantMap"
+          },
+          "status": {
+            "description": "Session status",
+            "enum": [
+              "connecting",
+              "joined",
+              "leaving",
+              "ended"
+            ],
+            "type": "string"
+          },
+          "waiting_room": {
+            "$ref": "#/components/schemas/ParticipantMap"
+          }
+        },
+        "required": [
+          "meeting_id",
+          "status",
+          "participants",
+          "waiting_room"
+        ],
+        "type": "object"
+      },
+      "StatusOk": {
+        "properties": {
+          "status": {
+            "enum": [
+              "ok"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "WaitingRoomResponse": {
+        "properties": {
+          "waiting_room": {
+            "$ref": "#/components/schemas/ParticipantMap"
+          }
+        },
+        "required": [
+          "waiting_room"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "description": "API key passed as Bearer token. If no api_key is configured on the server, authentication is disabled and all requests pass through.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "ZoomGate",
+      "url": "https://github.com/jhlee111/zoom_gate"
+    },
+    "description": "Zoom Meeting SDK bridge — waiting room access control as a service. ZoomGate connects to Zoom meetings as a bot and provides full control over waiting room admission, participant management, and in-meeting chat.",
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    },
+    "title": "ZoomGate API",
+    "version": "0.3.1"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/api/sessions": {
+      "get": {
+        "description": "Returns all currently active bot sessions.",
+        "operationId": "listSessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSessionsResponse"
+                }
+              }
+            },
+            "description": "List of active sessions"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "summary": "List active sessions",
+        "tags": [
+          "Sessions"
+        ]
+      },
+      "post": {
+        "description": "Starts a new ZoomGate bot that joins the specified Zoom meeting. The bot connects asynchronously — use the status endpoint or webhooks to track join progress.",
+        "operationId": "createSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            },
+            "description": "Session created, bot is connecting"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation error (missing meeting_id or session already exists)"
+          }
+        },
+        "summary": "Create a bot session",
+        "tags": [
+          "Sessions"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}": {
+      "delete": {
+        "description": "Stops the bot session and leaves the Zoom meeting gracefully.",
+        "operationId": "deleteSession",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaveSessionResponse"
+                }
+              }
+            },
+            "description": "Bot has left the meeting"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Leave meeting",
+        "tags": [
+          "Sessions"
+        ]
+      },
+      "get": {
+        "description": "Returns the full status of a session including participants and waiting room entries.",
+        "operationId": "getSession",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionStatusResponse"
+                }
+              }
+            },
+            "description": "Session status with participants"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Get session status",
+        "tags": [
+          "Sessions"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/admit": {
+      "post": {
+        "description": "Admits a participant from the waiting room into the meeting. Note: the participant's zoom_user_id will change after admission.",
+        "operationId": "admitParticipant",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOk"
+                }
+              }
+            },
+            "description": "Admit command sent"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Admit from waiting room",
+        "tags": [
+          "Commands"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/admit_all": {
+      "post": {
+        "description": "Admits all participants currently in the waiting room into the meeting.",
+        "operationId": "admitAll",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOk"
+                }
+              }
+            },
+            "description": "Admit all command sent"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Admit all from waiting room",
+        "tags": [
+          "Commands"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/chat": {
+      "post": {
+        "description": "Sends a chat message in the meeting. Omit 'to' for a broadcast message, or specify a zoom_user_id for a private message.",
+        "operationId": "sendChat",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOk"
+                }
+              }
+            },
+            "description": "Chat message sent"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Send chat message",
+        "tags": [
+          "Commands"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/chat_waiting_room": {
+      "post": {
+        "description": "Sends a chat message to all participants in the waiting room. Uses destNodeID=4 (SilentModeUsers).",
+        "operationId": "chatWaitingRoom",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatWaitingRoomRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOk"
+                }
+              }
+            },
+            "description": "Chat message sent to waiting room"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Chat to waiting room",
+        "tags": [
+          "Commands"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/deny": {
+      "post": {
+        "description": "Denies a participant and removes them from the waiting room.",
+        "operationId": "denyParticipant",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DenyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOk"
+                }
+              }
+            },
+            "description": "Deny command sent"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Deny from waiting room",
+        "tags": [
+          "Commands"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/end_meeting": {
+      "post": {
+        "description": "Ends the meeting for all participants. Requires host privileges.",
+        "operationId": "endMeeting",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOk"
+                }
+              }
+            },
+            "description": "End meeting command sent"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "End meeting",
+        "tags": [
+          "Commands"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/expel": {
+      "post": {
+        "description": "Removes (kicks) a participant from the meeting entirely.",
+        "operationId": "expelParticipant",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOk"
+                }
+              }
+            },
+            "description": "Expel command sent"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Remove participant",
+        "tags": [
+          "Commands"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/mute": {
+      "post": {
+        "description": "Mutes a participant's audio in the meeting.",
+        "operationId": "muteParticipant",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MuteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOk"
+                }
+              }
+            },
+            "description": "Mute command sent"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Mute participant",
+        "tags": [
+          "Commands"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/participants": {
+      "get": {
+        "description": "Returns all active participants in the meeting (excludes waiting room).",
+        "operationId": "listParticipants",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParticipantsResponse"
+                }
+              }
+            },
+            "description": "Map of participants keyed by zoom_user_id"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "List participants",
+        "tags": [
+          "Participants"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/rename": {
+      "post": {
+        "description": "Changes the display name of a participant in the meeting.",
+        "operationId": "renameParticipant",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOk"
+                }
+              }
+            },
+            "description": "Rename command sent"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Rename participant",
+        "tags": [
+          "Commands"
+        ]
+      }
+    },
+    "/api/sessions/{meeting_id}/waiting_room": {
+      "get": {
+        "description": "Returns all participants currently in the waiting room.",
+        "operationId": "listWaitingRoom",
+        "parameters": [
+          {
+            "description": "Zoom meeting ID",
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitingRoomResponse"
+                }
+              }
+            },
+            "description": "Map of waiting room entries keyed by zoom_user_id"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "List waiting room",
+        "tags": [
+          "Participants"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Returns server health status and session counts. No authentication required.",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Server is healthy"
+          }
+        },
+        "security": [],
+        "summary": "Health check",
+        "tags": [
+          "Health"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "Local development",
+      "url": "http://localhost:4000"
+    },
+    {
+      "description": "Production",
+      "url": "https://zoomgate.example.com"
+    }
+  ]
+}

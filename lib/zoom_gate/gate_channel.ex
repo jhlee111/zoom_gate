@@ -33,6 +33,7 @@ defmodule ZoomGate.GateChannel do
 
   require Logger
 
+  @doc false
   @impl true
   def join("gate:" <> meeting_id, _params, socket) do
     case ZoomGate.Session.whereis(meeting_id) do
@@ -45,24 +46,28 @@ defmodule ZoomGate.GateChannel do
     end
   end
 
+  @doc false
   @impl true
   def handle_in("get_status", _params, socket) do
     status = ZoomGate.Session.get_status(socket.assigns.meeting_id)
     {:reply, {:ok, status}, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("get_participants", _params, socket) do
     status = ZoomGate.Session.get_status(socket.assigns.meeting_id)
     {:reply, {:ok, %{participants: status.participants}}, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("get_waiting_room", _params, socket) do
     status = ZoomGate.Session.get_status(socket.assigns.meeting_id)
     {:reply, {:ok, %{waiting_room: status.waiting_room}}, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("admit", %{"zoom_user_id" => zid} = params, socket) do
     opts = if params["display_name"], do: [display_name: params["display_name"]], else: []
@@ -70,6 +75,7 @@ defmodule ZoomGate.GateChannel do
     {:reply, :ok, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("deny", %{"zoom_user_id" => zid} = params, socket) do
     opts = if params["message"], do: [message: params["message"]], else: []
@@ -77,18 +83,21 @@ defmodule ZoomGate.GateChannel do
     {:reply, :ok, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("rename", %{"zoom_user_id" => zid, "display_name" => name}, socket) do
     ZoomGate.Session.rename(socket.assigns.meeting_id, zid, name)
     {:reply, :ok, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("expel", %{"zoom_user_id" => zid}, socket) do
     ZoomGate.Session.expel(socket.assigns.meeting_id, zid)
     {:reply, :ok, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("chat", %{"message" => msg} = params, socket) do
     opts = if params["to"], do: [to: params["to"]], else: []
@@ -96,24 +105,28 @@ defmodule ZoomGate.GateChannel do
     {:reply, :ok, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("chat_waiting_room", %{"message" => msg}, socket) do
     ZoomGate.Session.chat_waiting_room(socket.assigns.meeting_id, msg)
     {:reply, :ok, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("admit_all", _params, socket) do
     ZoomGate.Session.admit_all(socket.assigns.meeting_id)
     {:reply, :ok, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("mute", %{"zoom_user_id" => zid}, socket) do
     ZoomGate.Session.mute(socket.assigns.meeting_id, zid)
     {:reply, :ok, socket}
   end
 
+  @doc false
   @impl true
   def handle_in("end_meeting", _params, socket) do
     ZoomGate.Session.end_meeting(socket.assigns.meeting_id)
@@ -121,12 +134,14 @@ defmodule ZoomGate.GateChannel do
   end
 
   # Forward session events to the WebSocket client
+  @doc false
   @impl true
   def handle_info({:zoom_gate, {event_type, payload}}, socket) do
     push(socket, to_string(event_type), payload)
     {:noreply, socket}
   end
 
+  @doc false
   @impl true
   def handle_info(:subscribe_to_session, socket) do
     meeting_id = socket.assigns.meeting_id
@@ -142,6 +157,7 @@ defmodule ZoomGate.GateChannel do
     end
   end
 
+  @doc false
   @impl true
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket) do
     push(socket, "meeting_ended", %{reason: "session_terminated"})

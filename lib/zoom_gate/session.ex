@@ -25,6 +25,7 @@ defmodule ZoomGate.Session do
 
   # -- Public API --
 
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     meeting_id = Keyword.fetch!(opts, :meeting_id)
     GenServer.start_link(__MODULE__, opts, name: via(meeting_id))
@@ -35,10 +36,13 @@ defmodule ZoomGate.Session do
 
       GenServer.call({ZoomGate.Session.via("123"), :zoom_bridge@host}, {:admit, ...})
   """
+  @spec via(String.t()) :: {:via, Registry, {ZoomGate.Registry, String.t()}}
   def via(meeting_id) do
     {:via, Registry, {ZoomGate.Registry, meeting_id}}
   end
 
+  @doc "Returns the PID of the session for `meeting_id`, or `nil` if none exists."
+  @spec whereis(String.t()) :: pid() | nil
   def whereis(meeting_id) do
     case Registry.lookup(ZoomGate.Registry, meeting_id) do
       [{pid, _}] -> pid
@@ -47,53 +51,73 @@ defmodule ZoomGate.Session do
   end
 
   @doc "Subscribe a process to receive `{:zoom_gate, {event_type, payload}}` messages."
+  @spec subscribe(String.t(), pid()) :: :ok
   def subscribe(meeting_id, pid \\ self()) do
     GenServer.call(via(meeting_id), {:subscribe, pid})
   end
 
   @doc "Unsubscribe a process from session events."
+  @spec unsubscribe(String.t(), pid()) :: :ok
   def unsubscribe(meeting_id, pid \\ self()) do
     GenServer.call(via(meeting_id), {:unsubscribe, pid})
   end
 
   @doc "Returns session status: meeting_id, status, participants, and waiting_room."
+  @spec get_status(String.t()) :: map()
   def get_status(meeting_id) do
     GenServer.call(via(meeting_id), :get_status)
   end
 
+  @doc "Admit a participant from the waiting room into the meeting."
+  @spec admit(String.t(), non_neg_integer(), keyword()) :: :ok
   def admit(meeting_id, zoom_user_id, opts \\ []) do
     GenServer.call(via(meeting_id), {:admit, zoom_user_id, opts})
   end
 
+  @doc "Deny a participant in the waiting room, removing them from the meeting."
+  @spec deny(String.t(), non_neg_integer(), keyword()) :: :ok
   def deny(meeting_id, zoom_user_id, opts \\ []) do
     GenServer.call(via(meeting_id), {:deny, zoom_user_id, opts})
   end
 
+  @doc "Rename a participant's display name."
+  @spec rename(String.t(), non_neg_integer(), String.t()) :: :ok
   def rename(meeting_id, zoom_user_id, display_name) do
     GenServer.call(via(meeting_id), {:rename, zoom_user_id, display_name})
   end
 
+  @doc "Expel a participant from the meeting."
+  @spec expel(String.t(), non_neg_integer()) :: :ok
   def expel(meeting_id, zoom_user_id) do
     GenServer.call(via(meeting_id), {:expel, zoom_user_id})
   end
 
+  @doc "Send a chat message. Use `to: zoom_user_id` in opts for a direct message."
+  @spec send_chat(String.t(), String.t(), keyword()) :: :ok
   def send_chat(meeting_id, message, opts \\ []) do
     GenServer.call(via(meeting_id), {:send_chat, message, opts})
   end
 
   @doc "Sends a chat message to all participants in the waiting room (broadcast)."
+  @spec chat_waiting_room(String.t(), String.t()) :: :ok
   def chat_waiting_room(meeting_id, message) do
     GenServer.call(via(meeting_id), {:chat_waiting_room, message})
   end
 
+  @doc "Admit all participants currently in the waiting room."
+  @spec admit_all(String.t()) :: :ok
   def admit_all(meeting_id) do
     GenServer.call(via(meeting_id), :admit_all)
   end
 
+  @doc "Mute a participant's audio."
+  @spec mute(String.t(), non_neg_integer()) :: :ok
   def mute(meeting_id, zoom_user_id) do
     GenServer.call(via(meeting_id), {:mute, zoom_user_id})
   end
 
+  @doc "End the meeting for all participants."
+  @spec end_meeting(String.t()) :: :ok
   def end_meeting(meeting_id) do
     GenServer.call(via(meeting_id), :end_meeting)
   end
