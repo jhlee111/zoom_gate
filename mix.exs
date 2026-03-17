@@ -59,7 +59,8 @@ defmodule ZoomGate.MixProject do
   defp package do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => "https://github.com/anthropics/zoom_gate"}
+      links: %{"GitHub" => "https://github.com/jhlee111/zoom_gate"},
+      files: ~w(lib config mix.exs README.md LICENSE usage-rules.md)
     ]
   end
 end
