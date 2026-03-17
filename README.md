@@ -187,11 +187,50 @@ RELEASE_NODE=gs_net@10.0.1.20
 RELEASE_COOKIE=shared_secret
 ```
 
+The consumer app passes Zoom credentials as opts — no API key needed (Erlang cookie is the auth):
+
 ```elixir
-# From consumer app — direct GenServer call, zero serialization
+# 1. Join meeting — pass all credentials as opts
 :rpc.call(:"zoom_gate@10.0.1.10", ZoomGate, :join_meeting, [
-  "123456789", [sdk_key: "...", sdk_secret: "...", zak: "...", callback: self()]
+  "123456789",
+  [
+    sdk_key: "YOUR_CLIENT_ID",        # from Zoom Marketplace app
+    sdk_secret: "YOUR_CLIENT_SECRET",  # from Zoom Marketplace app
+    zak: "eyJ0eXAi...",               # fresh ZAK (fetch right before join)
+    meeting_password: "123456",        # meeting passcode (if any)
+    display_name: "MyApp-Bot",         # bot display name in meeting
+    callback: self()                   # PID to receive events
+  ]
 ])
+
+# 2. Receive events directly in your process
+receive do
+  {:zoom_gate, {:bot_joined, _}} ->
+    IO.puts("Bot joined!")
+
+  {:zoom_gate, {:waiting_room_join, %{zoom_user_id: uid, display_name: name}}} ->
+    # Your business logic decides who to admit
+    :rpc.call(:"zoom_gate@10.0.1.10", ZoomGate, :admit, ["123456789", uid])
+end
+
+# 3. Or subscribe via PubSub from any process
+Phoenix.PubSub.subscribe(ZoomGate.PubSub, "zoom_gate:123456789")
+```
+
+The consumer app is responsible for credential management:
+
+```
+Your App (GsNet, etc.)              ZoomGate
+──────────────────────              ─────────────────
+Stores per-account:                  Receives as opts:
+  client_id (= sdk_key)               opts[:sdk_key]
+  client_secret (= sdk_secret)        opts[:sdk_secret]
+  refresh_token                        opts[:zak]
+
+Before each join_meeting:            Just uses them —
+  1. refresh_token → access_token    no storage, no OAuth
+  2. access_token → ZAK (5 min)
+  3. Pass everything to ZoomGate
 ```
 
 ## Zoom Setup
