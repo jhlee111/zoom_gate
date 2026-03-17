@@ -25,8 +25,8 @@ defmodule ZoomGate.Protocol do
       {"event": "error", "code": 1234, "message": "SDK error description"}
   """
 
-  @valid_commands ~w(admit deny rename expel chat chat_waiting_room leave simulate crash)
-  @valid_events ~w(joined waiting_room_join waiting_room_leave participant_joined participant_left meeting_ended error)
+  @valid_commands ~w(join admit admit_all deny rename expel mute unmute chat chat_waiting_room put_on_hold make_host make_cohost list_participants get_current_user end_meeting leave)
+  @valid_events ~w(ready joined left waiting_room_join waiting_room_leave participant_joined participant_left meeting_ended error command_ok user_updated participants current_user chat_received)
 
   @type command ::
           :admit

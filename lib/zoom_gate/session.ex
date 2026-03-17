@@ -98,6 +98,9 @@ defmodule ZoomGate.Session do
 
     state = %{
       meeting_id: meeting_id,
+      meeting_password: Keyword.get(opts, :meeting_password, ""),
+      display_name: Keyword.get(opts, :display_name, "ZoomGate-Bot"),
+      role: if(Keyword.get(opts, :join_as) == :host, do: 1, else: 0),
       callback: callback,
       webhook_url: webhook_url,
       port: nil,
@@ -113,10 +116,7 @@ defmodule ZoomGate.Session do
 
   @impl true
   def handle_continue({:start_worker, opts}, state) do
-    worker_path = worker_executable_path()
-    args = build_worker_args(opts)
-
-    {executable, port_args} = build_port_command(worker_path, args)
+    {executable, port_args, env} = build_port_command(opts)
 
     port =
       Port.open({:spawn_executable, executable}, [
@@ -124,10 +124,11 @@ defmodule ZoomGate.Session do
         :exit_status,
         :use_stdio,
         {:args, port_args},
-        {:line, 4096}
+        {:env, env},
+        {:line, 16_384}
       ])
 
-    Logger.info("[ZoomGate] Session #{state.meeting_id}: worker started")
+    Logger.info("[ZoomGate] Session #{state.meeting_id}: worker started (#{executable})")
     {:noreply, %{state | port: port, status: :connecting}}
   end
 
@@ -266,10 +267,40 @@ defmodule ZoomGate.Session do
 
   # -- Internal: SDK event handling --
 
+  defp handle_sdk_event(%{"event" => "ready"}, state) do
+    Logger.info("[ZoomGate] Session #{state.meeting_id}: worker ready, sending join command")
+
+    send_to_worker(state.port, %{
+      command: "join",
+      meeting_number: state.meeting_id,
+      password: state.meeting_password,
+      display_name: state.display_name,
+      role: state.role
+    })
+
+    %{state | status: :connecting}
+  end
+
   defp handle_sdk_event(%{"event" => "joined"}, state) do
     Logger.info("[ZoomGate] Session #{state.meeting_id}: bot joined meeting")
     deliver_event(state, {:bot_joined, %{meeting_id: state.meeting_id}})
     %{state | status: :active}
+  end
+
+  defp handle_sdk_event(%{"event" => "command_ok"} = data, state) do
+    Logger.debug("[ZoomGate] Session #{state.meeting_id}: command ok: #{data["command"]}")
+    state
+  end
+
+  defp handle_sdk_event(%{"event" => "user_updated"}, state) do
+    # Ignore user_updated events for now (noisy)
+    state
+  end
+
+  defp handle_sdk_event(%{"event" => "left"}, state) do
+    Logger.info("[ZoomGate] Session #{state.meeting_id}: bot left meeting")
+    deliver_event(state, {:meeting_ended, %{reason: :bot_left}})
+    %{state | status: :ended}
   end
 
   defp handle_sdk_event(%{"event" => "waiting_room_join"} = data, state) do
@@ -315,6 +346,21 @@ defmodule ZoomGate.Session do
     Logger.info("[ZoomGate] Session #{state.meeting_id}: meeting ended")
     deliver_event(state, {:meeting_ended, %{reason: :host_ended}})
     %{state | status: :ended}
+  end
+
+  defp handle_sdk_event(%{"event" => "participants"} = data, state) do
+    participants =
+      (data["participants"] || [])
+      |> Enum.reduce(%{}, fn p, acc ->
+        Map.put(acc, p["userId"], %{
+          zoom_user_id: p["userId"],
+          display_name: p["displayName"] || p["userName"],
+          is_host: p["isHost"] || false
+        })
+      end)
+
+    Logger.debug("[ZoomGate] Session #{state.meeting_id}: #{map_size(participants)} participants")
+    %{state | participants: participants}
   end
 
   defp handle_sdk_event(%{"event" => "error"} = data, state) do
@@ -386,44 +432,31 @@ defmodule ZoomGate.Session do
     Port.command(port, Protocol.encode_command(command))
   end
 
-  defp worker_executable_path do
-    Application.get_env(:zoom_gate, :worker_path, "zoom_worker")
-  end
+  defp build_port_command(opts) do
+    node_path = System.find_executable("node") || "node"
 
-  defp build_port_command(worker_path, args) do
-    case Application.get_env(:zoom_gate, :worker_command) do
-      nil ->
-        {worker_path, args}
+    worker_path =
+      Application.get_env(
+        :zoom_gate,
+        :worker_path,
+        Path.join(:code.priv_dir(:zoom_gate), "puppeteer-worker/zoom_worker.js")
+      )
 
-      command ->
-        # For mock worker: python3 mock_worker.py meeting_id ...
-        executable = System.find_executable(command) || command
-        {executable, [worker_path | args]}
-    end
-  end
+    sdk_key = Keyword.get(opts, :sdk_key) || Application.get_env(:zoom_gate, :zoom_sdk_key, "")
+    sdk_secret = Keyword.get(opts, :sdk_secret) || Application.get_env(:zoom_gate, :zoom_sdk_secret, "")
+    zak = Keyword.get(opts, :zak) || Application.get_env(:zoom_gate, :zoom_zak, "")
 
-  defp build_worker_args(opts) do
-    meeting_id = Keyword.fetch!(opts, :meeting_id)
-    password = Keyword.get(opts, :meeting_password, "")
+    chrome_path = Application.get_env(:zoom_gate, :chrome_path, "")
 
-    # Generate JWT for SDK auth (real worker uses JWT, mock worker ignores it)
-    jwt_token =
-      case {Keyword.get(opts, :sdk_key), Keyword.get(opts, :sdk_secret)} do
-        {key, secret} when is_binary(key) and key != "" and is_binary(secret) and secret != "" ->
-          ZoomGate.SdkJwt.generate(key, secret)
+    env =
+      [
+        {~c"ZOOM_SDK_KEY", String.to_charlist(sdk_key)},
+        {~c"ZOOM_SDK_SECRET", String.to_charlist(sdk_secret)},
+        {~c"ZOOM_ZAK", String.to_charlist(zak)},
+        {~c"HEADLESS", ~c"true"}
+      ] ++
+        if chrome_path != "", do: [{~c"CHROME_PATH", String.to_charlist(chrome_path)}], else: []
 
-        _ ->
-          # Fall back to app-level config
-          key = Application.get_env(:zoom_gate, :zoom_sdk_key, "")
-          secret = Application.get_env(:zoom_gate, :zoom_sdk_secret, "")
-
-          if key != "" and secret != "" do
-            ZoomGate.SdkJwt.generate(key, secret)
-          else
-            ""
-          end
-      end
-
-    [meeting_id, jwt_token, password]
+    {node_path, [worker_path], env}
   end
 end

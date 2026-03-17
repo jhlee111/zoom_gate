@@ -29,3 +29,26 @@ zoom_gate-*.tar
 # Environment files
 .env
 .env.*
+
+# OS files
+.DS_Store
+
+# Node modules
+node_modules/
+
+# Zoom tokens (secrets)
+native/.zoom_tokens*.json
+
+# Build artifacts
+native/build-*/
+native/__pycache__/
+
+# SDK packages (large binaries)
+native/zoom-meeting-sdk-*/
+native/zoom-meeting-sdk-macos/
+native/zoom-web-sdk-analysis/
+
+# Test artifacts
+native/web-sdk-test/net_thread_*.min.js
+native/web-sdk-test/js_media_original.min.js
+native/web-sdk-test/zoomus-patched.umd.min.js
