@@ -194,11 +194,67 @@ RELEASE_COOKIE=shared_secret
 ])
 ```
 
+## Zoom Setup
+
+ZoomGate needs credentials from a Zoom Marketplace app. Here's how to get them:
+
+### 1. Create a Zoom App
+
+1. Go to [Zoom Marketplace](https://marketplace.zoom.us/) → **Develop** → **Build App**
+2. Choose **General App** (not Meeting SDK add-on)
+3. Enable **Meeting SDK** in the app's Features tab
+4. Note your **Client ID** (= SDK Key) and **Client Secret** (= SDK Secret)
+
+### 2. Set OAuth Scopes
+
+In your app's **Scopes** tab, add:
+- `user:read:zak` — needed to get ZAK tokens for host join
+- `meeting:write:meeting` — needed to create meetings (optional)
+- `meeting:read:meeting` — needed to read meeting info (optional)
+
+### 3. Authorize & Get Tokens
+
+Your consuming application (not ZoomGate) handles the OAuth flow:
+
+```
+User authorizes your Zoom app → You get refresh_token → Store it
+                                                          │
+When joining a meeting:                                   │
+  1. refresh_token → POST zoom.us/oauth/token → access_token
+  2. access_token  → GET api.zoom.us/v2/users/me/zak → ZAK
+  3. Pass sdk_key + sdk_secret + zak to ZoomGate
+```
+
+### 4. Pass Credentials to ZoomGate
+
+Credentials are passed **per request** — ZoomGate does not store them:
+
+```bash
+curl -X POST http://localhost:4000/api/sessions \
+  -H "Authorization: Bearer $ZOOM_GATE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "meeting_id": "123456789",
+    "sdk_key": "YOUR_CLIENT_ID",
+    "sdk_secret": "YOUR_CLIENT_SECRET",
+    "zak": "FRESH_ZAK_TOKEN",
+    "meeting_password": "123456"
+  }'
+```
+
+| Credential | What | Who provides | Lifetime |
+|------------|------|-------------|----------|
+| `sdk_key` | Client ID from Zoom app | Your app config | Permanent |
+| `sdk_secret` | Client Secret from Zoom app | Your app config | Permanent |
+| `zak` | Zoom Access Key | Your app fetches via OAuth | ~5 minutes |
+| `meeting_password` | Meeting passcode | Meeting creator | Per meeting |
+
+> **Without ZAK**: Bot joins as participant (limited permissions).
+> **With ZAK**: Bot joins as host (can admit, mute, end meeting).
+
 ## Requirements
 
 - Elixir 1.18+
-- Zoom Meeting SDK App ([Create here](https://marketplace.zoom.us/))
-- ZAK token for host join (obtained via Zoom OAuth)
 
 ## Resource Usage
 
