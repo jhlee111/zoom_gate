@@ -34,6 +34,10 @@ defmodule ZoomGate.MixProject do
       # Config
       {:dotenvy, "~> 1.1"},
 
+      # WebSocket client for direct RWG connection
+      {:gun, "~> 2.1"},
+      {:elixir_uuid, "~> 1.2"},
+
       # Dev tools
       {:tidewave, "~> 0.5", only: :dev}
     ]
