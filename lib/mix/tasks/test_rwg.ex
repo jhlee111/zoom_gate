@@ -130,5 +130,4 @@ defmodule Mix.Tasks.TestRwg do
         drain_until(deadline)
     end
   end
-
 end

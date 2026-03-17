@@ -46,6 +46,7 @@ defmodule ZoomGate.MeetingBot.Frame do
   @spec encode_data(binary(), non_neg_integer(), non_neg_integer(), non_neg_integer()) :: binary()
   def encode_data(json, wire_seq, timestamp, last_recv_seq) do
     payload_len = byte_size(json) + 14
+
     <<
       @type_data,
       payload_len::big-unsigned-16,
@@ -65,11 +66,13 @@ defmodule ZoomGate.MeetingBot.Frame do
   @spec encode_ping(non_neg_integer(), non_neg_integer()) :: binary()
   def encode_ping(wire_seq, timestamp) do
     payload_len = 13
+
     <<
       @type_ping,
       payload_len::big-unsigned-16,
       wire_seq::big-unsigned-16,
-      0x00, 0x01,
+      0x00,
+      0x01,
       timestamp::big-unsigned-32,
       @magic::binary,
       0x00
@@ -95,12 +98,13 @@ defmodule ZoomGate.MeetingBot.Frame do
   - `{:pong, raw_frame}` for type 0x04
   - `{:unknown, type_byte}` for unrecognized types
   """
-  @spec decode(binary()) :: {:data, binary(), non_neg_integer()}
-    | {:data_binary, binary(), non_neg_integer()}
-    | {:handshake, binary()}
-    | {:ping, binary()}
-    | {:pong, binary()}
-    | {:unknown, byte()}
+  @spec decode(binary()) ::
+          {:data, binary(), non_neg_integer()}
+          | {:data_binary, binary(), non_neg_integer()}
+          | {:handshake, binary()}
+          | {:ping, binary()}
+          | {:pong, binary()}
+          | {:unknown, byte()}
   def decode(<<@type_handshake_server, _rest::binary>> = frame) do
     {:handshake, frame}
   end
@@ -113,13 +117,16 @@ defmodule ZoomGate.MeetingBot.Frame do
     {:pong, frame}
   end
 
-  def decode(<<@type_data, _payload_len::big-unsigned-16, wire_seq::big-unsigned-16, rest::binary>>)
+  def decode(
+        <<@type_data, _payload_len::big-unsigned-16, wire_seq::big-unsigned-16, rest::binary>>
+      )
       when byte_size(rest) >= 12 do
     <<_flags::binary-size(12), payload::binary>> = rest
     # Find JSON start
     case find_json_start(payload) do
       {:ok, json} ->
         {:data, json, wire_seq}
+
       :not_found ->
         {:data_binary, payload, wire_seq}
     end
