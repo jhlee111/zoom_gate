@@ -138,7 +138,7 @@ defmodule ZoomGate.MeetingBot.Connection do
       "zak" => Map.get(config, :zak, ""),
       "signType" => "sdk",
       "rwcAuth" => rwg_info["rwcAuth"] || "",
-      "as_type" => "1",
+      "as_type" => to_string(Map.get(config, :as_type, 1)),
       "email" => "0",
       "tk" => "",
       "cfs" => "0",

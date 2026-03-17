@@ -10,6 +10,11 @@ defmodule ZoomGate.GateChannel do
       const channel = socket.channel("gate:123456789")
       channel.join()
 
+      // Query state
+      channel.push("get_status", {}).receive("ok", (status) => ...)
+      channel.push("get_participants", {}).receive("ok", (list) => ...)
+      channel.push("get_waiting_room", {}).receive("ok", (list) => ...)
+
       // Send commands
       channel.push("admit", {zoom_user_id: 12345})
       channel.push("deny", {zoom_user_id: 12345})
@@ -38,6 +43,24 @@ defmodule ZoomGate.GateChannel do
         send(self(), :subscribe_to_session)
         {:ok, assign(socket, :meeting_id, meeting_id)}
     end
+  end
+
+  @impl true
+  def handle_in("get_status", _params, socket) do
+    status = ZoomGate.Session.get_status(socket.assigns.meeting_id)
+    {:reply, {:ok, status}, socket}
+  end
+
+  @impl true
+  def handle_in("get_participants", _params, socket) do
+    status = ZoomGate.Session.get_status(socket.assigns.meeting_id)
+    {:reply, {:ok, %{participants: status.participants}}, socket}
+  end
+
+  @impl true
+  def handle_in("get_waiting_room", _params, socket) do
+    status = ZoomGate.Session.get_status(socket.assigns.meeting_id)
+    {:reply, {:ok, %{waiting_room: status.waiting_room}}, socket}
   end
 
   @impl true

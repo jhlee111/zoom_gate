@@ -140,6 +140,7 @@ defmodule ZoomGate.Session do
       sdk_secret: sdk_secret,
       zak: zak,
       role: if(zak != "", do: 1, else: 0),
+      as_type: Keyword.get(opts, :as_type, 1),
       session_pid: self()
     ]
 
@@ -221,8 +222,9 @@ defmodule ZoomGate.Session do
 
   @impl true
   def handle_call({:chat_waiting_room, message}, _from, state) do
-    # RWG doesn't have a WR-specific chat API — send to all (destNodeID=0)
-    worker_mod(state).send_chat(state.meeting_bot, 0, message)
+    # destNodeID=4 targets SilentModeUsers (waiting room participants)
+    # Note: waiting room chat is NOT encrypted (just base64)
+    worker_mod(state).send_chat(state.meeting_bot, 4, message)
     {:reply, :ok, state}
   end
 

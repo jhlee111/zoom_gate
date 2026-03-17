@@ -24,7 +24,7 @@ defmodule ZoomGate.MeetingBot do
   require Logger
   require ZoomGate.MeetingBot.Protocol, as: Proto
 
-  alias ZoomGate.MeetingBot.{Connection, Participant, Protocol}
+  alias ZoomGate.MeetingBot.{Connection, Frame, Participant, Protocol}
 
   @keepalive_interval 60_000
   @max_reconnect_attempts 5
@@ -48,6 +48,9 @@ defmodule ZoomGate.MeetingBot do
     :reconnect_timer,
     role: 0,
     seq: 0,
+    wire_seq: 0,
+    last_recv_seq: 0,
+    as_type: 1,
     status: :initializing,
     participants: %{},
     reconnect_attempts: 0
@@ -104,7 +107,8 @@ defmodule ZoomGate.MeetingBot do
       zak: Keyword.get(opts, :zak, ""),
       role: Keyword.get(opts, :role, 0),
       session_pid: Keyword.fetch!(opts, :session_pid),
-      hardware_id: UUID.uuid4()
+      hardware_id: UUID.uuid4(),
+      as_type: Keyword.get(opts, :as_type, 1)
     }
 
     {:ok, state, {:continue, :connect}}
@@ -271,6 +275,43 @@ defmodule ZoomGate.MeetingBot do
 
       {:error, _} ->
         Logger.warning("[MeetingBot] Unparseable message: #{data}")
+        {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info({:gun_ws, _conn, _stream, {:binary, data}}, state) do
+    case Frame.decode(data) do
+      {:data, json, server_seq} ->
+        state = %{state | last_recv_seq: max(state.last_recv_seq, server_seq)}
+
+        case Protocol.decode(json) do
+          {:ok, msg} ->
+            {:noreply, handle_zoom_message(msg, state)}
+
+          {:error, _} ->
+            Logger.debug("[MeetingBot] Binary frame non-JSON payload")
+            {:noreply, state}
+        end
+
+      {:handshake, _frame} ->
+        Logger.info("[MeetingBot] Received server handshake")
+        {:noreply, state}
+
+      {:ping, frame} ->
+        pong = Frame.encode_pong(frame)
+        :gun.ws_send(state.conn, state.stream, {:binary, pong})
+        {:noreply, state}
+
+      {:data_binary, _payload, server_seq} ->
+        state = %{state | last_recv_seq: max(state.last_recv_seq, server_seq)}
+        {:noreply, state}
+
+      {:pong, _} ->
+        {:noreply, state}
+
+      {:unknown, type} ->
+        Logger.debug("[MeetingBot] Unknown binary frame type=0x#{Integer.to_string(type, 16)}")
         {:noreply, state}
     end
   end
@@ -450,9 +491,26 @@ defmodule ZoomGate.MeetingBot do
 
   defp send_evt(state, evt, body) do
     seq = state.seq + 1
-    msg = Protocol.encode(evt, body, seq)
-    :gun.ws_send(state.conn, state.stream, {:text, msg})
-    %{state | seq: seq}
+    json = Protocol.encode(evt, body, seq)
+
+    case state.as_type do
+      2 ->
+        wire_seq = state.wire_seq + 1
+        timestamp = monotonic_timestamp()
+        frame = Frame.encode_data(json, wire_seq, timestamp, state.last_recv_seq)
+        :gun.ws_send(state.conn, state.stream, {:binary, frame})
+        %{state | seq: seq, wire_seq: wire_seq}
+
+      _ ->
+        :gun.ws_send(state.conn, state.stream, {:text, json})
+        %{state | seq: seq}
+    end
+  end
+
+  defp monotonic_timestamp do
+    System.monotonic_time(:millisecond)
+    |> rem(0xFFFFFFFF)
+    |> max(0)
   end
 
   defp schedule_keepalive do

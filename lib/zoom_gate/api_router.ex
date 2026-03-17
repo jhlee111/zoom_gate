@@ -6,19 +6,21 @@ defmodule ZoomGate.ApiRouter do
 
   ## Endpoints
 
-      POST   /sessions                           Create bot session (join meeting)
-      GET    /sessions                           List active sessions
-      GET    /sessions/:meeting_id               Get session status
-      DELETE /sessions/:meeting_id               Stop session (leave meeting)
-      POST   /sessions/:meeting_id/admit         Admit from waiting room
-      POST   /sessions/:meeting_id/deny          Deny and remove from waiting room
-      POST   /sessions/:meeting_id/rename        Rename participant
-      POST   /sessions/:meeting_id/expel         Remove from meeting
-      POST   /sessions/:meeting_id/chat          Send chat message
-      POST   /sessions/:meeting_id/chat_waiting_room  Chat to waiting room
-      POST   /sessions/:meeting_id/admit_all     Admit all from waiting room
-      POST   /sessions/:meeting_id/mute          Mute a participant
-      POST   /sessions/:meeting_id/end_meeting   End meeting for all
+      POST   /sessions                                Create bot session (join meeting)
+      GET    /sessions                                List active sessions
+      GET    /sessions/:meeting_id                    Get session status
+      DELETE /sessions/:meeting_id                    Stop session (leave meeting)
+      GET    /sessions/:meeting_id/participants       List active participants
+      GET    /sessions/:meeting_id/waiting_room       List waiting room participants
+      POST   /sessions/:meeting_id/admit              Admit from waiting room
+      POST   /sessions/:meeting_id/deny               Deny and remove from waiting room
+      POST   /sessions/:meeting_id/admit_all          Admit all from waiting room
+      POST   /sessions/:meeting_id/rename             Rename participant
+      POST   /sessions/:meeting_id/expel              Remove from meeting
+      POST   /sessions/:meeting_id/chat               Send chat message
+      POST   /sessions/:meeting_id/chat_waiting_room  Chat to waiting room (destNodeID=4)
+      POST   /sessions/:meeting_id/mute               Mute a participant
+      POST   /sessions/:meeting_id/end_meeting        End meeting for all
   """
 
   use Plug.Router
@@ -85,6 +87,20 @@ defmodule ZoomGate.ApiRouter do
       :ok -> send_json(conn, 200, %{status: "left"})
       {:error, :not_found} -> send_json(conn, 404, %{error: "not_found"})
     end
+  end
+
+  get "/sessions/:meeting_id/participants" do
+    with_session(conn, meeting_id, fn ->
+      status = ZoomGate.Session.get_status(meeting_id)
+      send_json(conn, 200, %{participants: status.participants})
+    end)
+  end
+
+  get "/sessions/:meeting_id/waiting_room" do
+    with_session(conn, meeting_id, fn ->
+      status = ZoomGate.Session.get_status(meeting_id)
+      send_json(conn, 200, %{waiting_room: status.waiting_room})
+    end)
   end
 
   # -- Session commands --
