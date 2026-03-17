@@ -6,7 +6,11 @@ defmodule ZoomGate.MeetingBot.Connection do
 
       1. GET zoom.us/api/v1/wc/info → meeting info + RWC servers
       2. GET rwc/wc/ping/{meeting} → RWG hostname + rwcAuth
-      3. WSS rwg/wc/api/{meeting}?as_type=1&... → WebSocket connection
+      3. WSS rwg/wc/api/{meeting}?as_type={1|2}&... → WebSocket connection
+
+  The `as_type` parameter is read from the config map:
+  - `1` — plaintext JSON (text frames)
+  - `2` — binary framing (17-byte header + JSON, see `Frame`)
   """
 
   require Logger

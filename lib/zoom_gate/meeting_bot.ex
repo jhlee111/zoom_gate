@@ -2,8 +2,12 @@ defmodule ZoomGate.MeetingBot do
   @moduledoc """
   Pure Elixir Zoom Web SDK client.
 
-  Connects directly to Zoom's RWG WebSocket using `as_type=1` (plaintext JSON).
-  Based on the Zoomer (Go) reverse-engineering.
+  Connects directly to Zoom's RWG WebSocket. Supports two wire formats:
+
+  - `as_type: 1` — plaintext JSON text frames (default)
+  - `as_type: 2` — binary frames with 17-byte header (see `Frame`)
+
+  Both modes support full waiting room management (detect, admit, deny).
 
   ## State Machine
 
@@ -17,7 +21,7 @@ defmodule ZoomGate.MeetingBot do
 
   Started by `ZoomGate.Session` as a child process. Reports events via:
 
-      send(session_pid, {:web_client_event, {event_type, payload}})
+      send(session_pid, {:meeting_bot_event, {event_type, payload}})
   """
 
   use GenServer
