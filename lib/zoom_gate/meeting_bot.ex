@@ -157,17 +157,34 @@ defmodule ZoomGate.MeetingBot do
     state = %{state | status: :connecting}
 
     extra_params =
-      state.reconnect_opts
-      |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
-      |> Map.new()
+      case state.reconnect_opts do
+        opts when is_map(opts) ->
+          opts
+          |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+          |> Map.new()
 
-    case Connection.reconnect(
-           state,
-           state.meeting_info,
-           state.rwg_info,
-           state.cookies,
-           extra_params
-         ) do
+        opts when is_list(opts) ->
+          opts
+          |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+          |> Map.new()
+
+        _ ->
+          %{}
+      end
+
+    # If we have meeting_info and rwg_info, try a websocket reconnect.
+    # Otherwise, do a full connect from scratch.
+    result =
+      if state.meeting_info && state.rwg_info do
+        Connection.reconnect(state, state.meeting_info, state.rwg_info, state.cookies, extra_params)
+      else
+        case Connection.connect(state) do
+          {:ok, conn, stream, _meeting_info} -> {:ok, conn, stream}
+          error -> error
+        end
+      end
+
+    case result do
       {:ok, conn, stream} ->
         schedule_keepalive()
 
@@ -363,13 +380,13 @@ defmodule ZoomGate.MeetingBot do
     Logger.info("[MeetingBot] WebSocket closed: #{code} #{reason}")
 
     case state.status do
-      :active ->
-        # Unexpected close during active session — try reconnect
-        attempt_reconnect(state)
+      :ended ->
+        notify(state, {:meeting_ended, %{reason: :ws_closed}})
+        {:stop, :normal, state}
 
       _ ->
-        notify(state, {:meeting_ended, %{reason: :ws_closed}})
-        {:stop, :normal, %{state | status: :ended}}
+        # Unexpected close — try reconnect
+        attempt_reconnect(state)
     end
   end
 
@@ -378,11 +395,11 @@ defmodule ZoomGate.MeetingBot do
     Logger.error("[MeetingBot] Connection down: #{inspect(reason)}")
 
     case state.status do
-      status when status in [:active, :waiting_room] ->
-        attempt_reconnect(state)
+      :ended ->
+        {:stop, {:connection_down, reason}, state}
 
       _ ->
-        {:stop, {:connection_down, reason}, state}
+        attempt_reconnect(state)
     end
   end
 
