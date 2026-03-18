@@ -30,7 +30,7 @@ defmodule ZoomGate.MeetingBot.Connection do
     with {:ok, meeting_info, cookies} <- get_meeting_info(config),
          {:ok, rwg_info} <- ping_rwc(meeting_info),
          {:ok, conn, stream_ref} <- connect_websocket(config, meeting_info, rwg_info, cookies) do
-      {:ok, conn, stream_ref, meeting_info}
+      {:ok, conn, stream_ref, meeting_info, rwg_info, cookies}
     end
   end
 

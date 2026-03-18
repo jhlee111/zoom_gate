@@ -159,6 +159,9 @@ defmodule ZoomGate.Session do
       callback: callback,
       webhook_url: webhook_url,
       meeting_bot: nil,
+      bot_opts: opts,
+      bot_restart_attempts: 0,
+      bot_restart_timer: nil,
       participants: %{},
       waiting_room: %{},
       subscribers: MapSet.new(),
@@ -224,11 +227,20 @@ defmodule ZoomGate.Session do
 
   @impl true
   def handle_call(:get_status, _from, state) do
+    bot_health =
+      if state.meeting_bot && Process.alive?(state.meeting_bot) do
+        worker_mod(state).get_health(state.meeting_bot)
+      else
+        %{status: :not_running}
+      end
+
     status = %{
       meeting_id: state.meeting_id,
       status: state.status,
       participants: state.participants,
-      waiting_room: state.waiting_room
+      waiting_room: state.waiting_room,
+      bot_health: bot_health,
+      bot_restart_attempts: state.bot_restart_attempts
     }
 
     {:reply, status, state}
@@ -324,7 +336,7 @@ defmodule ZoomGate.Session do
   def handle_info({:meeting_bot_event, {:joined, _join_info}}, state) do
     Logger.info("[ZoomGate] Session #{state.meeting_id}: bot joined meeting")
     deliver_event(state, {:bot_joined, %{meeting_id: state.meeting_id}})
-    {:noreply, %{state | status: :active}}
+    {:noreply, %{state | status: :active, bot_restart_attempts: 0}}
   end
 
   @impl true
@@ -387,6 +399,12 @@ defmodule ZoomGate.Session do
   end
 
   @impl true
+  def handle_info({:meeting_bot_event, {:bot_disconnected, payload}}, state) do
+    deliver_event(state, {:bot_disconnected, payload})
+    {:noreply, %{state | status: :reconnecting}}
+  end
+
+  @impl true
   def handle_info({:meeting_bot_event, {:error, payload}}, state) do
     Logger.error("[ZoomGate] Session #{state.meeting_id}: error: #{inspect(payload)}")
     deliver_event(state, {:error, payload})
@@ -400,8 +418,20 @@ defmodule ZoomGate.Session do
       "[ZoomGate] Session #{state.meeting_id}: MeetingBot exited: #{inspect(reason)}"
     )
 
-    deliver_event(state, {:meeting_ended, %{reason: :worker_exit}})
-    {:stop, {:meeting_bot_exited, reason}, %{state | meeting_bot: nil, status: :terminated}}
+    case state.status do
+      status when status in [:ended, :terminated] ->
+        deliver_event(state, {:meeting_ended, %{reason: :worker_exit}})
+        {:stop, :normal, %{state | meeting_bot: nil}}
+
+      _ ->
+        deliver_event(state, {:bot_disconnected, %{reason: inspect(reason)}})
+        attempt_bot_restart(%{state | meeting_bot: nil})
+    end
+  end
+
+  @impl true
+  def handle_info(:restart_meeting_bot, state) do
+    {:noreply, state, {:continue, {:start_meeting_bot, state.bot_opts}}}
   end
 
   # Subscriber process died
@@ -500,6 +530,36 @@ defmodule ZoomGate.Session do
 
       true ->
         state
+    end
+  end
+
+  @max_bot_restarts 3
+  @initial_bot_restart_delay 2_000
+
+  defp attempt_bot_restart(state) do
+    attempt = state.bot_restart_attempts + 1
+
+    if attempt > @max_bot_restarts do
+      Logger.error("[ZoomGate] Session #{state.meeting_id}: bot restart exhausted (#{attempt})")
+      deliver_event(state, {:meeting_ended, %{reason: :bot_restart_failed}})
+      {:stop, {:bot_restart_failed, :max_attempts}, %{state | status: :terminated}}
+    else
+      delay = @initial_bot_restart_delay * Integer.pow(2, attempt - 1)
+      delay = min(delay, 15_000)
+
+      Logger.info(
+        "[ZoomGate] Session #{state.meeting_id}: restarting bot in #{delay}ms (attempt #{attempt})"
+      )
+
+      timer = Process.send_after(self(), :restart_meeting_bot, delay)
+
+      {:noreply,
+       %{
+         state
+         | bot_restart_attempts: attempt,
+           bot_restart_timer: timer,
+           status: :reconnecting
+       }}
     end
   end
 

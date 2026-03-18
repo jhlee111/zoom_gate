@@ -56,6 +56,12 @@ defmodule ZoomGate.MockMeetingBot do
     GenServer.call(pid, :leave)
   end
 
+  def get_health(pid) do
+    GenServer.call(pid, :get_health, 5_000)
+  catch
+    :exit, _ -> %{status: :unreachable}
+  end
+
   @doc "Inject an event into the Session (test helper)."
   def send_event(pid, event) do
     GenServer.cast(pid, {:inject_event, event})
@@ -159,6 +165,11 @@ defmodule ZoomGate.MockMeetingBot do
   @impl true
   def handle_call({:spotlight, _user_id, _spotlight}, _from, state) do
     {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call(:get_health, _from, state) do
+    {:reply, %{status: :active, heartbeat_age_ms: 0, reconnect_attempts: 0, participant_count: 0}, state}
   end
 
   @impl true

@@ -245,17 +245,36 @@ defmodule ZoomGate.SessionTest do
   end
 
   describe "meeting_bot crash" do
-    test "MeetingBot crash terminates session with exit event" do
+    test "MeetingBot crash triggers restart, session stays alive" do
       mid = unique_id()
       pid = start_session(mid)
-      ref = Process.monitor(pid)
 
       # Get the MeetingBot PID and kill it
       %{meeting_bot: wc_pid} = :sys.get_state(pid)
       Process.exit(wc_pid, :kill)
 
-      assert_receive {:zoom_gate, {:meeting_ended, %{reason: :worker_exit}}}, 2000
-      assert_receive {:DOWN, ^ref, :process, ^pid, {:meeting_bot_exited, :killed}}, 2000
+      # Session should deliver bot_disconnected and stay alive
+      assert_receive {:zoom_gate, {:bot_disconnected, _}}, 2000
+      assert Process.alive?(pid)
+
+      # Session should restart the bot
+      Process.sleep(3000)
+      %{meeting_bot: new_wc_pid} = :sys.get_state(pid)
+      assert new_wc_pid != nil
+      assert new_wc_pid != wc_pid
+      assert Process.alive?(new_wc_pid)
+    end
+
+    test "meeting_ended stops session cleanly" do
+      mid = unique_id()
+      pid = start_session(mid)
+      ref = Process.monitor(pid)
+
+      # Simulate meeting ended event from bot — Session should stop
+      send(pid, {:meeting_bot_event, {:meeting_ended, %{reason: :ended_by_host, code: 8}}})
+
+      assert_receive {:zoom_gate, {:meeting_ended, %{reason: :ended_by_host}}}, 2000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
     end
   end
 end

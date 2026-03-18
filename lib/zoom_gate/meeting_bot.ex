@@ -31,6 +31,8 @@ defmodule ZoomGate.MeetingBot do
   alias ZoomGate.MeetingBot.{Connection, Frame, Participant, Protocol}
 
   @keepalive_interval 60_000
+  @heartbeat_check_interval 30_000
+  @heartbeat_timeout 90_000
   @max_reconnect_attempts 5
   @initial_reconnect_delay 1_000
 
@@ -51,6 +53,8 @@ defmodule ZoomGate.MeetingBot do
     :cookies,
     :reconnect_timer,
     :analyzer,
+    :last_heartbeat_at,
+    :heartbeat_check_timer,
     role: 0,
     seq: 0,
     wire_seq: 0,
@@ -107,6 +111,12 @@ defmodule ZoomGate.MeetingBot do
     GenServer.call(pid, :leave)
   end
 
+  def get_health(pid) do
+    GenServer.call(pid, :get_health, 5_000)
+  catch
+    :exit, _ -> %{status: :unreachable}
+  end
+
   # -- GenServer --
 
   @impl true
@@ -133,8 +143,9 @@ defmodule ZoomGate.MeetingBot do
     state = %{state | status: :connecting}
 
     case Connection.connect(state) do
-      {:ok, conn, stream, meeting_info} ->
+      {:ok, conn, stream, meeting_info, rwg_info, cookies} ->
         schedule_keepalive()
+        schedule_heartbeat_check()
 
         {:noreply,
          %{
@@ -142,6 +153,9 @@ defmodule ZoomGate.MeetingBot do
            | conn: conn,
              stream: stream,
              meeting_info: meeting_info,
+             rwg_info: rwg_info,
+             cookies: cookies,
+             last_heartbeat_at: System.monotonic_time(:millisecond),
              status: :connecting
          }}
 
@@ -174,25 +188,35 @@ defmodule ZoomGate.MeetingBot do
 
     # If we have meeting_info and rwg_info, try a websocket reconnect.
     # Otherwise, do a full connect from scratch.
-    result =
+    {result, new_rwg_info, new_cookies} =
       if state.meeting_info && state.rwg_info do
-        Connection.reconnect(state, state.meeting_info, state.rwg_info, state.cookies, extra_params)
+        case Connection.reconnect(state, state.meeting_info, state.rwg_info, state.cookies, extra_params) do
+          {:ok, conn, stream} -> {{:ok, conn, stream}, state.rwg_info, state.cookies}
+          error -> {error, state.rwg_info, state.cookies}
+        end
       else
         case Connection.connect(state) do
-          {:ok, conn, stream, _meeting_info} -> {:ok, conn, stream}
-          error -> error
+          {:ok, conn, stream, _meeting_info, rwg_info, cookies} ->
+            {{:ok, conn, stream}, rwg_info, cookies}
+
+          error ->
+            {error, state.rwg_info, state.cookies}
         end
       end
 
     case result do
       {:ok, conn, stream} ->
         schedule_keepalive()
+        schedule_heartbeat_check()
 
         {:noreply,
          %{
            state
            | conn: conn,
              stream: stream,
+             rwg_info: new_rwg_info,
+             cookies: new_cookies,
+             last_heartbeat_at: System.monotonic_time(:millisecond),
              status: :connecting,
              reconnect_attempts: 0
          }}
@@ -296,6 +320,23 @@ defmodule ZoomGate.MeetingBot do
   end
 
   @impl true
+  def handle_call(:get_health, _from, state) do
+    health = %{
+      status: state.status,
+      last_heartbeat_at: state.last_heartbeat_at,
+      heartbeat_age_ms:
+        if(state.last_heartbeat_at,
+          do: System.monotonic_time(:millisecond) - state.last_heartbeat_at,
+          else: nil
+        ),
+      reconnect_attempts: state.reconnect_attempts,
+      participant_count: map_size(state.participants)
+    }
+
+    {:reply, health, state}
+  end
+
+  @impl true
   def handle_call(:end_meeting, _from, state) do
     state = send_evt(state, Proto.evt_end_req(), %{})
     {:reply, :ok, state}
@@ -319,6 +360,29 @@ defmodule ZoomGate.MeetingBot do
   @impl true
   def handle_info(:retry_reconnect, state) do
     {:noreply, state, {:continue, :reconnect}}
+  end
+
+  @impl true
+  def handle_info(:trigger_reconnect, state) do
+    attempt_reconnect(state)
+  end
+
+  @impl true
+  def handle_info(:heartbeat_check, state) do
+    if state.status == :active && state.last_heartbeat_at do
+      elapsed = System.monotonic_time(:millisecond) - state.last_heartbeat_at
+
+      if elapsed > @heartbeat_timeout do
+        Logger.warning("[MeetingBot] Heartbeat timeout (#{elapsed}ms), triggering reconnect")
+        attempt_reconnect(state)
+      else
+        schedule_heartbeat_check()
+        {:noreply, state}
+      end
+    else
+      schedule_heartbeat_check()
+      {:noreply, state}
+    end
   end
 
   @impl true
@@ -413,7 +477,7 @@ defmodule ZoomGate.MeetingBot do
 
   defp handle_zoom_message(%{"evt" => Proto.evt_keepalive()} = msg, state) do
     Logger.debug("[MeetingBot] Heartbeat seq=#{msg["seq"]}")
-    state
+    %{state | last_heartbeat_at: System.monotonic_time(:millisecond)}
   end
 
   defp handle_zoom_message(%{"evt" => Proto.evt_join_res(), "body" => body}, state) do
@@ -506,9 +570,25 @@ defmodule ZoomGate.MeetingBot do
     state
   end
 
+  defp handle_zoom_message(%{"evt" => Proto.evt_end(), "body" => body}, state) do
+    reason = body["reason"] || 0
+
+    if reason == 5 do
+      # Reconnect signal (e.g., WaitingRoomFailover)
+      Logger.info("[MeetingBot] Reconnect signal (reason=5, subReason=#{body["subReason"]})")
+      send(self(), :trigger_reconnect)
+      %{state | status: :reconnecting}
+    else
+      reason_atom = end_reason_atom(reason)
+      Logger.info("[MeetingBot] Meeting ended: #{reason_atom} (reason=#{reason})")
+      notify(state, {:meeting_ended, %{reason: reason_atom, code: reason}})
+      %{state | status: :ended}
+    end
+  end
+
   defp handle_zoom_message(%{"evt" => Proto.evt_end()}, state) do
-    Logger.info("[MeetingBot] Meeting ended")
-    notify(state, {:meeting_ended, %{reason: :host_ended}})
+    Logger.info("[MeetingBot] Meeting ended (no body)")
+    notify(state, {:meeting_ended, %{reason: :ended}})
     %{state | status: :ended}
   end
 
@@ -577,6 +657,10 @@ defmodule ZoomGate.MeetingBot do
     Process.send_after(self(), :keepalive, @keepalive_interval)
   end
 
+  defp schedule_heartbeat_check do
+    Process.send_after(self(), :heartbeat_check, @heartbeat_check_interval)
+  end
+
   defp notify(%{session_pid: pid}, event) when is_pid(pid) do
     send(pid, {:meeting_bot_event, event})
   end
@@ -591,6 +675,7 @@ defmodule ZoomGate.MeetingBot do
   end
 
   defp attempt_reconnect(state) do
+    notify(state, {:bot_disconnected, %{reason: :connection_lost}})
     attempt = state.reconnect_attempts + 1
 
     if attempt <= @max_reconnect_attempts do
@@ -611,6 +696,15 @@ defmodule ZoomGate.MeetingBot do
       {:stop, :normal, %{state | status: :ended}}
     end
   end
+
+  defp end_reason_atom(7), do: :kicked_by_host
+  defp end_reason_atom(8), do: :ended_by_host
+  defp end_reason_atom(9), do: :ended_by_host_for_another
+  defp end_reason_atom(10), do: :free_meeting_timeout
+  defp end_reason_atom(15), do: :ended_by_none
+  defp end_reason_atom(16), do: :ended_by_admin
+  defp end_reason_atom(17), do: :duplicate_session
+  defp end_reason_atom(_), do: :ended
 
   defp maybe_update_field(struct, _field, nil), do: struct
   defp maybe_update_field(struct, field, value), do: Map.put(struct, field, value)
