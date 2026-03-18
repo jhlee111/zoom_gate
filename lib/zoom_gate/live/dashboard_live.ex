@@ -10,14 +10,14 @@ defmodule ZoomGate.DashboardLive do
 
   use Phoenix.LiveView
 
-  @refresh_interval 2_000
   @max_events 50
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(ZoomGate.PubSub, "zoom:webhooks")
-      :timer.send_interval(@refresh_interval, self(), :refresh_sessions)
+      # Subscribe to session lifecycle (new sessions starting/stopping)
+      Phoenix.PubSub.subscribe(ZoomGate.PubSub, "zoom_gate:sessions")
     end
 
     sessions = fetch_sessions()
@@ -33,8 +33,9 @@ defmodule ZoomGate.DashboardLive do
      )}
   end
 
+  # Session PubSub events — refresh on any change
   @impl true
-  def handle_info(:refresh_sessions, socket) do
+  def handle_info({:zoom_gate, _event}, socket) do
     sessions = fetch_sessions()
 
     # Subscribe to any new sessions
@@ -46,13 +47,6 @@ defmodule ZoomGate.DashboardLive do
     end
 
     {:noreply, assign(socket, sessions: sessions, session_count: length(sessions), subscribed_meetings: new_ids)}
-  end
-
-  # Session PubSub events — trigger immediate refresh
-  @impl true
-  def handle_info({:zoom_gate, _event}, socket) do
-    sessions = fetch_sessions()
-    {:noreply, assign(socket, sessions: sessions, session_count: length(sessions))}
   end
 
   @impl true
