@@ -34,7 +34,12 @@ defmodule ZoomGate.ZoomAPI do
       {~c"content-type", ~c"application/x-www-form-urlencoded"}
     ]
 
-    case :httpc.request(:post, {url, headers, ~c"application/x-www-form-urlencoded", ~c""}, ssl_opts(), []) do
+    case :httpc.request(
+           :post,
+           {url, headers, ~c"application/x-www-form-urlencoded", ~c""},
+           ssl_opts(),
+           []
+         ) do
       {:ok, {{_, 200, _}, _, body}} ->
         {:ok, %{"access_token" => token}} = Jason.decode(to_string(body))
         {:ok, token}
@@ -83,7 +88,12 @@ defmodule ZoomGate.ZoomAPI do
       {~c"content-type", ~c"application/json"}
     ]
 
-    case :httpc.request(:post, {url, headers, ~c"application/json", to_charlist(body)}, ssl_opts(), []) do
+    case :httpc.request(
+           :post,
+           {url, headers, ~c"application/json", to_charlist(body)},
+           ssl_opts(),
+           []
+         ) do
       {:ok, {{_, 201, _}, _, resp_body}} ->
         {:ok, resp} = Jason.decode(to_string(resp_body))
 
@@ -165,7 +175,12 @@ defmodule ZoomGate.ZoomAPI do
       {~c"content-type", ~c"application/json"}
     ]
 
-    case :httpc.request(:patch, {url, headers, ~c"application/json", to_charlist(body)}, ssl_opts(), []) do
+    case :httpc.request(
+           :patch,
+           {url, headers, ~c"application/json", to_charlist(body)},
+           ssl_opts(),
+           []
+         ) do
       {:ok, {{_, status, _}, _, _}} when status in [200, 204] -> :ok
       {:ok, {{_, status, _}, _, resp_body}} -> {:error, {status, to_string(resp_body)}}
       {:error, reason} -> {:error, reason}

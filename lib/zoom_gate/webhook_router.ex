@@ -64,7 +64,9 @@ defmodule ZoomGate.WebhookRouter do
   defp handle_event(conn, "meeting.participant_joined_waiting_room", body) do
     {meeting_id, participant} = extract_participant(body)
 
-    Logger.info("[Webhook] #{participant.user_name} entered waiting room | meeting=#{meeting_id} email=#{participant.email} registrant_id=#{participant.registrant_id}")
+    Logger.info(
+      "[Webhook] #{participant.user_name} entered waiting room | meeting=#{meeting_id} email=#{participant.email} registrant_id=#{participant.registrant_id}"
+    )
 
     broadcast_event(meeting_id, :participant_waiting, participant)
     send_json(conn, 200, %{status: "ok"})
@@ -79,14 +81,22 @@ defmodule ZoomGate.WebhookRouter do
 
   defp handle_event(conn, "meeting.participant_joined", body) do
     {meeting_id, participant} = extract_participant(body)
-    Logger.info("[Webhook] #{participant.user_name} joined | meeting=#{meeting_id} user_id=#{participant.user_id}")
+
+    Logger.info(
+      "[Webhook] #{participant.user_name} joined | meeting=#{meeting_id} user_id=#{participant.user_id}"
+    )
+
     broadcast_event(meeting_id, :participant_joined, participant)
     send_json(conn, 200, %{status: "ok"})
   end
 
   defp handle_event(conn, "meeting.participant_left", body) do
     {meeting_id, participant} = extract_participant(body)
-    Logger.info("[Webhook] #{participant.user_name} left | meeting=#{meeting_id} reason=#{participant.leave_reason}")
+
+    Logger.info(
+      "[Webhook] #{participant.user_name} left | meeting=#{meeting_id} reason=#{participant.leave_reason}"
+    )
+
     broadcast_event(meeting_id, :participant_left, participant)
     send_json(conn, 200, %{status: "ok"})
   end
@@ -124,7 +134,11 @@ defmodule ZoomGate.WebhookRouter do
     Phoenix.PubSub.broadcast(ZoomGate.PubSub, "zoom:webhooks", {:zoom_webhook, event_type, data})
 
     if meeting_id != "" do
-      Phoenix.PubSub.broadcast(ZoomGate.PubSub, "zoom:webhooks:#{meeting_id}", {:zoom_webhook, event_type, data})
+      Phoenix.PubSub.broadcast(
+        ZoomGate.PubSub,
+        "zoom:webhooks:#{meeting_id}",
+        {:zoom_webhook, event_type, data}
+      )
     end
   end
 

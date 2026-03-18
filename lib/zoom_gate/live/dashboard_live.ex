@@ -46,7 +46,12 @@ defmodule ZoomGate.DashboardLive do
       Phoenix.PubSub.subscribe(ZoomGate.PubSub, "zoom_gate:#{mid}")
     end
 
-    {:noreply, assign(socket, sessions: sessions, session_count: length(sessions), subscribed_meetings: new_ids)}
+    {:noreply,
+     assign(socket,
+       sessions: sessions,
+       session_count: length(sessions),
+       subscribed_meetings: new_ids
+     )}
   end
 
   @impl true
@@ -308,8 +313,14 @@ defmodule ZoomGate.DashboardLive do
   defp extract_meeting_id(%{meeting_id: id}) when is_binary(id), do: id
   defp extract_meeting_id(_), do: nil
 
-  defp health_level(%{status: :active, heartbeat_age_ms: age}) when is_integer(age) and age < 30_000, do: :green
-  defp health_level(%{status: :active, heartbeat_age_ms: age}) when is_integer(age) and age < 90_000, do: :yellow
+  defp health_level(%{status: :active, heartbeat_age_ms: age})
+       when is_integer(age) and age < 30_000,
+       do: :green
+
+  defp health_level(%{status: :active, heartbeat_age_ms: age})
+       when is_integer(age) and age < 90_000,
+       do: :yellow
+
   defp health_level(%{status: :active}), do: :green
   defp health_level(%{status: :connecting}), do: :yellow
   defp health_level(%{status: :reconnecting}), do: :yellow
@@ -334,15 +345,18 @@ defmodule ZoomGate.DashboardLive do
   defp health_label(_), do: "unknown"
 
   defp participant_name(%{display_name: name} = p) when is_binary(name) and name != "" do
-    role_tag = cond do
-      Map.get(p, :is_host, false) -> " [Host]"
-      Map.get(p, :role) == 1 -> " [Host]"
-      Map.get(p, :is_cohost, false) -> " [CoHost]"
-      Map.get(p, :role) == 2 -> " [CoHost]"
-      true -> ""
-    end
+    role_tag =
+      cond do
+        Map.get(p, :is_host, false) -> " [Host]"
+        Map.get(p, :role) == 1 -> " [Host]"
+        Map.get(p, :is_cohost, false) -> " [CoHost]"
+        Map.get(p, :role) == 2 -> " [CoHost]"
+        true -> ""
+      end
+
     name <> role_tag
   end
+
   defp participant_name(%{zoom_user_id: uid}), do: "User #{uid}"
   defp participant_name(_), do: "Unknown"
 

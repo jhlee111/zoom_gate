@@ -165,8 +165,57 @@ Note: P1 (Zoom Marketplace App) is infra setup — no code release.
 - Module docs (`@moduledoc`) for all public modules
 - Function docs (`@doc`) for public functions
 - No unnecessary abstractions — this is a thin wrapper
-- C++ code: modern C++ (C++17), nlohmann/json for JSON
-- C++ naming: snake_case for functions, PascalCase for classes
+
+### Elixir Idiom Rules
+
+1. **Pattern matching first** — Use pattern matching instead of `if` wherever possible
+2. **Multi-clause functions** — Split logic into multiple function clauses with pattern matching
+3. **Guards** — Fine-tune pattern matching with `when` guards
+4. **`with` statement** — Use `with` for sequential operations that may fail (e.g., decode → process)
+5. **`if` is last resort** — Only use `if` when pattern matching/guards/`with` cannot express the logic
+6. **`Map.fetch` over `Map.get` + nil check** — Use `{:ok, val}` / `:error` pattern matching
+7. **`case map_size(x)` over `if map_size(x) > 0`** — Pattern match on 0 vs _ in case
+
+```elixir
+# BAD: nested if
+if b_hold do
+  if user_id == bot_id do
+    ...
+  else
+    ...
+  end
+else
+  ...
+end
+
+# GOOD: multi-clause with pattern matching
+defp handle_hold_change(state, bot_id, true, bot_id, body), do: ...
+defp handle_hold_change(state, user_id, true, _bot_id, _body), do: ...
+defp handle_hold_change(state, bot_id, false, bot_id, _body), do: ...
+defp handle_hold_change(state, user_id, false, _bot_id, _body), do: ...
+
+# BAD: if with boolean
+if state.status == :active && state.last_heartbeat_at do ... end
+
+# GOOD: guard in function head
+def handle_info(:heartbeat_check, %{status: :active, last_heartbeat_at: last} = state)
+    when is_integer(last), do: ...
+def handle_info(:heartbeat_check, state), do: ...
+
+# BAD: if for nil check
+if state.analyzer, do: send(state.analyzer, {:raw_ws, :incoming, data})
+
+# GOOD: multi-clause with guard
+defp tap_analyzer(%{analyzer: pid}, direction, data) when is_pid(pid),
+  do: send(pid, {:raw_ws, direction, data})
+defp tap_analyzer(_, _, _), do: :ok
+```
+
+### Why This Matters
+
+- An `if` is a signal that pattern matching can replace it. When branching logic moves into the function head, the body is left with only "what to do."
+- Multi-clause functions make each case a standalone declaration — no branch tracing needed.
+- Refactoring to pattern matching naturally surfaces latent bugs like missing struct fields.
 
 ---
 

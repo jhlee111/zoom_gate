@@ -168,6 +168,12 @@ defmodule ZoomGate.Session do
       status: :initializing
     }
 
+    Phoenix.PubSub.broadcast(
+      ZoomGate.PubSub,
+      "zoom_gate:sessions",
+      {:zoom_gate, {:session_started, %{meeting_id: meeting_id}}}
+    )
+
     {:ok, state, {:continue, {:start_meeting_bot, opts}}}
   end
 
@@ -494,6 +500,12 @@ defmodule ZoomGate.Session do
         _, _ -> :ok
       end
     end
+
+    Phoenix.PubSub.broadcast(
+      ZoomGate.PubSub,
+      "zoom_gate:sessions",
+      {:zoom_gate, {:session_stopped, %{meeting_id: state.meeting_id}}}
+    )
 
     Logger.info("[ZoomGate] Session #{state.meeting_id}: terminated (#{inspect(reason)})")
   end

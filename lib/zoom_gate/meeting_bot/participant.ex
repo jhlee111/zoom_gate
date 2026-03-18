@@ -34,6 +34,8 @@ defmodule ZoomGate.MeetingBot.Participant do
           b_hold: boolean()
         }
 
+  @tracked_fields [:display_name, :role, :is_host, :is_cohost, :muted, :video_on, :b_hold]
+
   @doc "Parse a participant from a raw roster entry map."
   @spec from_raw(map()) :: t()
   def from_raw(raw) when is_map(raw) do
@@ -60,19 +62,17 @@ defmodule ZoomGate.MeetingBot.Participant do
   """
   @spec merge_roster(map(), map()) :: {map(), [{atom(), map()}]}
   def merge_roster(participants, body) when is_map(participants) and is_map(body) do
-    {participants, events} = process_adds(participants, Map.get(body, "add", []))
-    {participants, events2} = process_updates(participants, Map.get(body, "update", []))
-    {participants, events3} = process_removes(participants, Map.get(body, "remove", []))
-    {participants, events ++ events2 ++ events3}
+    {participants, []}
+    |> process_entries(:add, body["add"])
+    |> process_entries(:update, body["update"])
+    |> process_entries(:remove, body["remove"])
   end
 
   @doc "Split participants into active and waiting room maps."
   @spec split_by_hold(map()) :: {map(), map()}
   def split_by_hold(participants) do
-    Enum.split_with(participants, fn {_id, p} -> not p.b_hold end)
-    |> then(fn {active, waiting} ->
-      {Map.new(active), Map.new(waiting)}
-    end)
+    {active, waiting} = Enum.split_with(participants, fn {_id, p} -> not p.b_hold end)
+    {Map.new(active), Map.new(waiting)}
   end
 
   @doc "Convert a Participant to the map format used in Session events."
@@ -89,122 +89,104 @@ defmodule ZoomGate.MeetingBot.Participant do
     }
   end
 
-  # -- Internal --
+  # -- Roster Processing --
 
-  defp process_adds(participants, adds) when is_list(adds) do
-    Enum.reduce(adds, {participants, []}, fn raw, {ps, evts} ->
-      p = from_raw(raw)
-      event_type = if p.b_hold, do: :waiting_room_join, else: :participant_joined
-      {Map.put(ps, p.id, p), evts ++ [{event_type, to_event_map(p)}]}
+  defp process_entries(acc, _action, nil), do: acc
+  defp process_entries(acc, _action, entries) when not is_list(entries), do: acc
+
+  defp process_entries(acc, action, entries) do
+    Enum.reduce(entries, acc, fn raw, {ps, evts} ->
+      apply_entry(action, ps, evts, raw)
     end)
   end
 
-  defp process_adds(participants, _), do: {participants, []}
-
-  defp process_updates(participants, updates) when is_list(updates) do
-    Enum.reduce(updates, {participants, []}, fn raw, {ps, evts} ->
-      apply_update(ps, evts, raw)
-    end)
+  defp apply_entry(:add, ps, evts, raw) do
+    p = from_raw(raw)
+    {Map.put(ps, p.id, p), evts ++ [{join_event_type(p), to_event_map(p)}]}
   end
 
-  defp process_updates(participants, _), do: {participants, []}
-
-  defp apply_update(ps, evts, raw) do
+  defp apply_entry(:update, ps, evts, raw) do
     id = raw["id"]
     new_data = from_raw(raw)
 
-    case Map.get(ps, id) do
-      nil ->
-        event_type = if new_data.b_hold, do: :waiting_room_join, else: :participant_joined
-        {Map.put(ps, id, new_data), evts ++ [{event_type, to_event_map(new_data)}]}
-
-      existing ->
+    case Map.fetch(ps, id) do
+      {:ok, existing} ->
         merged = merge_fields(existing, new_data, raw)
-        update_evts = diff_events(existing, merged)
-        {Map.put(ps, id, merged), evts ++ update_evts}
+        {Map.put(ps, id, merged), evts ++ diff_events(existing, merged)}
+
+      :error ->
+        {Map.put(ps, id, new_data), evts ++ [{join_event_type(new_data), to_event_map(new_data)}]}
     end
   end
 
-  defp process_removes(participants, removes) when is_list(removes) do
-    Enum.reduce(removes, {participants, []}, fn raw, {ps, evts} ->
-      apply_remove(ps, evts, raw)
-    end)
-  end
-
-  defp process_removes(participants, _), do: {participants, []}
-
-  defp apply_remove(ps, evts, raw) do
-    id = raw["id"]
-
-    case Map.get(ps, id) do
-      nil ->
-        {ps, evts}
-
-      existing ->
-        event_type = if existing.b_hold, do: :waiting_room_leave, else: :participant_left
-        {Map.delete(ps, id), evts ++ [{event_type, %{zoom_user_id: id}}]}
+  defp apply_entry(:remove, ps, evts, %{"id" => id}) do
+    case Map.pop(ps, id) do
+      {nil, ps} -> {ps, evts}
+      {existing, ps} -> {ps, evts ++ [{leave_event_type(existing), %{zoom_user_id: id}}]}
     end
   end
+
+  defp apply_entry(:remove, ps, evts, _), do: {ps, evts}
+
+  # -- Event Type Resolution --
+
+  defp join_event_type(%{b_hold: true}), do: :waiting_room_join
+  defp join_event_type(%{b_hold: false}), do: :participant_joined
+
+  defp leave_event_type(%{b_hold: true}), do: :waiting_room_leave
+  defp leave_event_type(%{b_hold: false}), do: :participant_left
+
+  # -- Field Merging --
 
   defp merge_fields(existing, new_data, raw) do
-    # Only update fields that are actually present in the raw data
     existing
     |> maybe_update(:display_name, new_data.display_name, raw["dn2"])
     |> maybe_update(:role, new_data.role, raw["role"])
     |> maybe_update(:is_host, new_data.is_host, raw["isHost"])
-    |> maybe_update(:is_cohost, new_data.is_cohost, raw["isCoHost"])
+    |> maybe_update(:is_cohost, new_data.is_cohost, raw["isCoHost"] || raw["bCoHost"])
     |> maybe_update(:muted, new_data.muted, raw["muted"])
     |> maybe_update(:video_on, new_data.video_on, raw["bVideoOn"])
     |> maybe_update(:b_hold, new_data.b_hold, raw["bHold"])
     |> maybe_update(:avatar, new_data.avatar, raw["avatar"])
   end
 
-  @tracked_fields [:display_name, :role, :is_host, :is_cohost, :muted, :video_on, :b_hold]
+  defp maybe_update(participant, _field, _value, nil), do: participant
+  defp maybe_update(participant, field, value, _raw), do: Map.put(participant, field, value)
+
+  # -- Diff Events --
 
   defp diff_events(old, new) do
-    evts = []
+    [
+      diff_hold(old, new),
+      diff_rename(old, new),
+      diff_tracked(old, new)
+    ]
+    |> List.flatten()
+  end
 
-    # Hold change → waiting room events
-    evts =
-      if old.b_hold != new.b_hold do
-        if new.b_hold do
-          evts ++ [{:waiting_room_join, to_event_map(new)}]
-        else
-          evts ++ [{:waiting_room_leave, %{zoom_user_id: new.id}}]
-        end
-      else
-        evts
-      end
+  defp diff_hold(%{b_hold: same}, %{b_hold: same}), do: []
+  defp diff_hold(_old, %{b_hold: true} = new), do: [{:waiting_room_join, to_event_map(new)}]
+  defp diff_hold(_old, new), do: [{:waiting_room_leave, %{zoom_user_id: new.id}}]
 
-    # Name change
-    evts =
-      if old.display_name != new.display_name and new.display_name != "" do
-        evts ++
-          [
-            {:participant_renamed,
-             %{
-               zoom_user_id: new.id,
-               old_name: old.display_name,
-               new_name: new.display_name
-             }}
-          ]
-      else
-        evts
-      end
+  defp diff_rename(%{display_name: same}, %{display_name: same}), do: []
+  defp diff_rename(_old, %{display_name: ""}), do: []
 
-    # Any tracked field change → participant_updated
+  defp diff_rename(old, new) do
+    [
+      {:participant_renamed,
+       %{zoom_user_id: new.id, old_name: old.display_name, new_name: new.display_name}}
+    ]
+  end
+
+  defp diff_tracked(old, new) do
     changes =
       @tracked_fields
       |> Enum.filter(fn field -> Map.get(old, field) != Map.get(new, field) end)
       |> Map.new(fn field -> {field, Map.get(new, field)} end)
 
-    if map_size(changes) > 0 do
-      evts ++ [{:participant_updated, Map.merge(%{zoom_user_id: new.id}, changes)}]
-    else
-      evts
+    case map_size(changes) do
+      0 -> []
+      _ -> [{:participant_updated, Map.merge(%{zoom_user_id: new.id}, changes)}]
     end
   end
-
-  defp maybe_update(participant, _field, _value, nil), do: participant
-  defp maybe_update(participant, field, value, _raw), do: Map.put(participant, field, value)
 end

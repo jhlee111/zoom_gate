@@ -46,7 +46,8 @@ defmodule ZoomGate.MockMeetingBot do
 
   def lock_sharing(pid, locked), do: GenServer.call(pid, {:lock_sharing, locked})
 
-  def spotlight(pid, user_id, spotlight), do: GenServer.call(pid, {:spotlight, user_id, spotlight})
+  def spotlight(pid, user_id, spotlight),
+    do: GenServer.call(pid, {:spotlight, user_id, spotlight})
 
   def end_meeting(pid) do
     GenServer.call(pid, :end_meeting)
@@ -109,19 +110,40 @@ defmodule ZoomGate.MockMeetingBot do
     # Admit: participant leaves WR, joins meeting
     notify(state, {:waiting_room_leave, %{zoom_user_id: user_id}})
 
-    p = %{zoom_user_id: user_id, display_name: "User #{user_id}", role: 0, is_host: false, is_cohost: false, muted: false, video_on: false}
+    p = %{
+      zoom_user_id: user_id,
+      display_name: "User #{user_id}",
+      role: 0,
+      is_host: false,
+      is_cohost: false,
+      muted: false,
+      video_on: false
+    }
+
     notify(state, {:participant_joined, p})
 
-    participants = state.participants
-    |> Map.delete(user_id)
-    |> Map.put(user_id, p)
+    participants =
+      state.participants
+      |> Map.delete(user_id)
+      |> Map.put(user_id, p)
 
     {:reply, :ok, %{state | participants: participants}}
   end
 
   def handle_call({:put_on_hold, user_id, true}, _from, state) do
     notify(state, {:participant_left, %{zoom_user_id: user_id}})
-    p = %{zoom_user_id: user_id, display_name: "User #{user_id}", role: 0, is_host: false, is_cohost: false, muted: false, video_on: false, b_hold: true}
+
+    p = %{
+      zoom_user_id: user_id,
+      display_name: "User #{user_id}",
+      role: 0,
+      is_host: false,
+      is_cohost: false,
+      muted: false,
+      video_on: false,
+      b_hold: true
+    }
+
     notify(state, {:waiting_room_join, %{zoom_user_id: user_id, display_name: "User #{user_id}"}})
     participants = Map.put(state.participants, user_id, p)
     {:reply, :ok, %{state | participants: participants}}
@@ -180,7 +202,8 @@ defmodule ZoomGate.MockMeetingBot do
 
   @impl true
   def handle_call(:get_health, _from, state) do
-    {:reply, %{status: :active, heartbeat_age_ms: 0, reconnect_attempts: 0, participant_count: 0}, state}
+    {:reply, %{status: :active, heartbeat_age_ms: 0, reconnect_attempts: 0, participant_count: 0},
+     state}
   end
 
   @impl true
