@@ -62,6 +62,12 @@ defmodule ZoomGate.MockMeetingBot do
     :exit, _ -> %{status: :unreachable}
   end
 
+  def get_participants(pid) do
+    GenServer.call(pid, :get_participants, 5_000)
+  catch
+    :exit, _ -> %{}
+  end
+
   @doc "Inject an event into the Session (test helper)."
   def send_event(pid, event) do
     GenServer.cast(pid, {:inject_event, event})
@@ -77,7 +83,7 @@ defmodule ZoomGate.MockMeetingBot do
     # Simulate async connection + join
     Process.send_after(self(), :send_joined, 10)
 
-    {:ok, %{session_pid: session_pid, meeting_number: meeting_number}}
+    {:ok, %{session_pid: session_pid, meeting_number: meeting_number, participants: %{}}}
   end
 
   @impl true
@@ -103,28 +109,28 @@ defmodule ZoomGate.MockMeetingBot do
     # Admit: participant leaves WR, joins meeting
     notify(state, {:waiting_room_leave, %{zoom_user_id: user_id}})
 
-    notify(
-      state,
-      {:participant_joined,
-       %{
-         zoom_user_id: user_id,
-         display_name: "User #{user_id}"
-       }}
-    )
+    p = %{zoom_user_id: user_id, display_name: "User #{user_id}", role: 0, is_host: false, is_cohost: false, muted: false, video_on: false}
+    notify(state, {:participant_joined, p})
 
-    {:reply, :ok, state}
+    participants = state.participants
+    |> Map.delete(user_id)
+    |> Map.put(user_id, p)
+
+    {:reply, :ok, %{state | participants: participants}}
   end
 
   def handle_call({:put_on_hold, user_id, true}, _from, state) do
     notify(state, {:participant_left, %{zoom_user_id: user_id}})
+    p = %{zoom_user_id: user_id, display_name: "User #{user_id}", role: 0, is_host: false, is_cohost: false, muted: false, video_on: false, b_hold: true}
     notify(state, {:waiting_room_join, %{zoom_user_id: user_id, display_name: "User #{user_id}"}})
-    {:reply, :ok, state}
+    participants = Map.put(state.participants, user_id, p)
+    {:reply, :ok, %{state | participants: participants}}
   end
 
   @impl true
   def handle_call({:expel, user_id}, _from, state) do
     notify(state, {:participant_left, %{zoom_user_id: user_id}})
-    {:reply, :ok, state}
+    {:reply, :ok, %{state | participants: Map.delete(state.participants, user_id)}}
   end
 
   @impl true
@@ -168,6 +174,11 @@ defmodule ZoomGate.MockMeetingBot do
   end
 
   @impl true
+  def handle_call(:get_participants, _from, state) do
+    {:reply, state.participants, state}
+  end
+
+  @impl true
   def handle_call(:get_health, _from, state) do
     {:reply, %{status: :active, heartbeat_age_ms: 0, reconnect_attempts: 0, participant_count: 0}, state}
   end
@@ -188,8 +199,27 @@ defmodule ZoomGate.MockMeetingBot do
   @impl true
   def handle_cast({:inject_event, event}, state) do
     notify(state, event)
+    state = track_injected_event(state, event)
     {:noreply, state}
   end
+
+  defp track_injected_event(state, {:participant_joined, %{zoom_user_id: uid} = p}) do
+    %{state | participants: Map.put(state.participants, uid, p)}
+  end
+
+  defp track_injected_event(state, {:waiting_room_join, %{zoom_user_id: uid} = p}) do
+    %{state | participants: Map.put(state.participants, uid, Map.put(p, :b_hold, true))}
+  end
+
+  defp track_injected_event(state, {:participant_left, %{zoom_user_id: uid}}) do
+    %{state | participants: Map.delete(state.participants, uid)}
+  end
+
+  defp track_injected_event(state, {:waiting_room_leave, %{zoom_user_id: uid}}) do
+    %{state | participants: Map.delete(state.participants, uid)}
+  end
+
+  defp track_injected_event(state, _), do: state
 
   defp notify(state, event) do
     send(state.session_pid, {:meeting_bot_event, event})

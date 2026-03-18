@@ -13,7 +13,8 @@ config :zoom_gate, ZoomGate.Endpoint,
   http: [port: 4000],
   secret_key_base: "dev-only-secret-key-base-that-is-at-least-64-bytes-long-for-development-use",
   server: true,
-  pubsub_server: ZoomGate.PubSub
+  pubsub_server: ZoomGate.PubSub,
+  live_view: [signing_salt: "ZoomGateLV2026"]
 
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",

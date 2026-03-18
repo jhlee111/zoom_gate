@@ -23,6 +23,10 @@ defmodule ZoomGate.Router do
   forward("/api", to: ZoomGate.ApiRouter)
 
   match _ do
-    send_resp(conn, 404, Jason.encode!(%{error: "not_found"}))
+    if conn.state == :sent do
+      conn
+    else
+      send_resp(conn, 404, Jason.encode!(%{error: "not_found"}))
+    end
   end
 end

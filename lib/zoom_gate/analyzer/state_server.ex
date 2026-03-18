@@ -95,6 +95,10 @@ defmodule ZoomGate.Analyzer.StateServer do
     {:reply, state.client_state, state}
   end
 
+  def handle_call(:get_status, _from, state) do
+    {:reply, state.client_state, state}
+  end
+
   def handle_call(:get_participants, _from, state) do
     {:reply, state.client_state.participants, state}
   end

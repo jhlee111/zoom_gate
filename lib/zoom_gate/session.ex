@@ -234,11 +234,33 @@ defmodule ZoomGate.Session do
         %{status: :not_running}
       end
 
+    # Get live participant data from MeetingBot (includes real-time role/cohost/mute changes)
+    # Falls back to Session's local state if bot data is empty or unavailable
+    {live_participants, live_waiting} =
+      if state.meeting_bot && Process.alive?(state.meeting_bot) do
+        try do
+          all = worker_mod(state).get_participants(state.meeting_bot)
+
+          if map_size(all) > 0 do
+            {active, waiting} =
+              Enum.split_with(all, fn {_id, p} -> !Map.get(p, :b_hold, false) end)
+
+            {Map.new(active), Map.new(waiting)}
+          else
+            {state.participants, state.waiting_room}
+          end
+        catch
+          :exit, _ -> {state.participants, state.waiting_room}
+        end
+      else
+        {state.participants, state.waiting_room}
+      end
+
     status = %{
       meeting_id: state.meeting_id,
       status: state.status,
-      participants: state.participants,
-      waiting_room: state.waiting_room,
+      participants: live_participants,
+      waiting_room: live_waiting,
       bot_health: bot_health,
       bot_restart_attempts: state.bot_restart_attempts
     }
@@ -370,9 +392,32 @@ defmodule ZoomGate.Session do
   @impl true
   def handle_info({:meeting_bot_event, {:participant_renamed, payload}}, state) do
     deliver_event(state, {:participant_renamed, payload})
-    # Update display_name in local state
     uid = payload.zoom_user_id
     state = update_participant_name(state, uid, payload.new_name)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:participant_updated, payload}}, state) do
+    deliver_event(state, {:participant_updated, payload})
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:attribute_changed, payload}}, state) do
+    deliver_event(state, {:attribute_changed, payload})
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:meeting_option_changed, payload}}, state) do
+    deliver_event(state, {:meeting_option_changed, payload})
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:meeting_bot_event, {:raw_event, payload}}, state) do
+    deliver_event(state, {:raw_event, payload})
     {:noreply, state}
   end
 

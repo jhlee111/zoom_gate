@@ -52,7 +52,7 @@ defmodule ZoomGate.SessionSupervisor do
   Lists all active meeting sessions with their meeting IDs and PIDs.
   """
   def list_sessions do
-    Registry.select(ZoomGate.Registry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+    Registry.select(ZoomGate.Registry, [{{:"$1", :"$2", :_}, [{:is_binary, :"$1"}], [{{:"$1", :"$2"}}]}])
   end
 
   @doc "Returns the number of active sessions."

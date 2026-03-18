@@ -44,7 +44,7 @@ defmodule ZoomGate.MeetingBot.Participant do
       avatar: raw["avatar"],
       role: raw["role"] || 0,
       is_host: raw["isHost"] == true,
-      is_cohost: raw["isCoHost"] == true,
+      is_cohost: raw["isCoHost"] == true || raw["bCoHost"] == true,
       muted: raw["muted"] == true,
       video_on: raw["bVideoOn"] == true,
       b_hold: raw["bHold"] == true
@@ -159,9 +159,24 @@ defmodule ZoomGate.MeetingBot.Participant do
     |> maybe_update(:avatar, new_data.avatar, raw["avatar"])
   end
 
+  @tracked_fields [:display_name, :role, :is_host, :is_cohost, :muted, :video_on, :b_hold]
+
   defp diff_events(old, new) do
     evts = []
 
+    # Hold change → waiting room events
+    evts =
+      if old.b_hold != new.b_hold do
+        if new.b_hold do
+          evts ++ [{:waiting_room_join, to_event_map(new)}]
+        else
+          evts ++ [{:waiting_room_leave, %{zoom_user_id: new.id}}]
+        end
+      else
+        evts
+      end
+
+    # Name change
     evts =
       if old.display_name != new.display_name and new.display_name != "" do
         evts ++
@@ -177,18 +192,17 @@ defmodule ZoomGate.MeetingBot.Participant do
         evts
       end
 
-    evts =
-      if old.b_hold != new.b_hold do
-        if new.b_hold do
-          evts ++ [{:waiting_room_join, to_event_map(new)}]
-        else
-          evts ++ [{:waiting_room_leave, %{zoom_user_id: new.id}}]
-        end
-      else
-        evts
-      end
+    # Any tracked field change → participant_updated
+    changes =
+      @tracked_fields
+      |> Enum.filter(fn field -> Map.get(old, field) != Map.get(new, field) end)
+      |> Map.new(fn field -> {field, Map.get(new, field)} end)
 
-    evts
+    if map_size(changes) > 0 do
+      evts ++ [{:participant_updated, Map.merge(%{zoom_user_id: new.id}, changes)}]
+    else
+      evts
+    end
   end
 
   defp maybe_update(participant, _field, _value, nil), do: participant

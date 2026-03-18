@@ -89,7 +89,7 @@ defmodule ZoomGate.MeetingBot.ParticipantTest do
 
       assert participants[1].muted == true
       assert participants[1].display_name == "Alice"
-      assert events == []
+      assert [{:participant_updated, %{zoom_user_id: 1, muted: true}}] = events
     end
 
     test "processes remove list" do
@@ -131,7 +131,7 @@ defmodule ZoomGate.MeetingBot.ParticipantTest do
       assert map_size(participants) == 2
       assert participants[1].muted == true
       assert participants[3].display_name == "Charlie"
-      assert [{:participant_joined, %{zoom_user_id: 3}}] = events
+      assert [{:participant_joined, %{zoom_user_id: 3}}, {:participant_updated, %{zoom_user_id: 1, muted: true}}] = events
     end
 
     test "handles empty body" do

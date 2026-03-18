@@ -117,6 +117,12 @@ defmodule ZoomGate.MeetingBot do
     :exit, _ -> %{status: :unreachable}
   end
 
+  def get_participants(pid) do
+    GenServer.call(pid, :get_participants, 5_000)
+  catch
+    :exit, _ -> %{}
+  end
+
   # -- GenServer --
 
   @impl true
@@ -317,6 +323,18 @@ defmodule ZoomGate.MeetingBot do
   def handle_call({:spotlight, user_id, spotlight}, _from, state) do
     state = send_evt(state, Proto.evt_spotlight_req(), %{id: user_id, bSpotlight: spotlight})
     {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call(:get_participants, _from, state) do
+    alias ZoomGate.MeetingBot.Participant
+
+    participants =
+      state.participants
+      |> Enum.map(fn {id, p} -> {id, Participant.to_event_map(p)} end)
+      |> Map.new()
+
+    {:reply, participants, state}
   end
 
   @impl true
@@ -599,11 +617,11 @@ defmodule ZoomGate.MeetingBot do
   end
 
   defp handle_zoom_message(%{"evt" => Proto.evt_attribute(), "body" => body}, state) do
-    # Attribute updates (mute state, video, etc.) — update participant
     user_id = body["id"]
 
     case Map.get(state.participants, user_id) do
       nil ->
+        notify(state, {:attribute_changed, %{zoom_user_id: user_id, changes: body}})
         state
 
       participant ->
@@ -616,13 +634,18 @@ defmodule ZoomGate.MeetingBot do
     end
   end
 
-  defp handle_zoom_message(%{"evt" => Proto.evt_option()}, state) do
-    # Meeting option changes — ignored for now
+  defp handle_zoom_message(%{"evt" => Proto.evt_option(), "body" => body}, state) do
+    notify(state, {:meeting_option_changed, body})
+    state
+  end
+
+  defp handle_zoom_message(%{"evt" => evt, "body" => body}, state) do
+    notify(state, {:raw_event, %{evt: evt, body: body}})
     state
   end
 
   defp handle_zoom_message(%{"evt" => evt}, state) do
-    Logger.debug("[MeetingBot] Unhandled evt=#{evt}")
+    notify(state, {:raw_event, %{evt: evt, body: nil}})
     state
   end
 
