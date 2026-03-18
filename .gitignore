@@ -65,3 +65,6 @@ native/zoom_join_test.py
 native/zoom_join_v2.py
 native/zoom_probe.py
 native/zoom_oauth.py
+
+# Analyzer session exports (contain auth tokens)
+/analyzer_exports/

@@ -50,6 +50,7 @@ defmodule ZoomGate.MeetingBot do
     :rwg_info,
     :cookies,
     :reconnect_timer,
+    :analyzer,
     role: 0,
     seq: 0,
     wire_seq: 0,
@@ -90,6 +91,14 @@ defmodule ZoomGate.MeetingBot do
     GenServer.call(pid, {:mute, user_id, muted})
   end
 
+  def start_recording(pid), do: GenServer.call(pid, :start_recording)
+
+  def stop_recording(pid), do: GenServer.call(pid, :stop_recording)
+
+  def lock_sharing(pid, locked), do: GenServer.call(pid, {:lock_sharing, locked})
+
+  def spotlight(pid, user_id, spotlight), do: GenServer.call(pid, {:spotlight, user_id, spotlight})
+
   def end_meeting(pid) do
     GenServer.call(pid, :end_meeting)
   end
@@ -112,7 +121,8 @@ defmodule ZoomGate.MeetingBot do
       role: Keyword.get(opts, :role, 0),
       session_pid: Keyword.fetch!(opts, :session_pid),
       hardware_id: UUID.uuid4(),
-      as_type: Keyword.get(opts, :as_type, 1)
+      as_type: Keyword.get(opts, :as_type, 1),
+      analyzer: Keyword.get(opts, :analyzer)
     }
 
     {:ok, state, {:continue, :connect}}
@@ -245,6 +255,30 @@ defmodule ZoomGate.MeetingBot do
   end
 
   @impl true
+  def handle_call(:start_recording, _from, state) do
+    state = send_evt(state, Proto.evt_record_req(), %{bRecord: true, bPause: false})
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call(:stop_recording, _from, state) do
+    state = send_evt(state, Proto.evt_record_req(), %{bRecord: false, bPause: false})
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:lock_sharing, locked}, _from, state) do
+    state = send_evt(state, Proto.evt_lock_sharing_req(), %{lockShare: if(locked, do: 1, else: 0)})
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:spotlight, user_id, spotlight}, _from, state) do
+    state = send_evt(state, Proto.evt_spotlight_req(), %{id: user_id, bSpotlight: spotlight})
+    {:reply, :ok, state}
+  end
+
+  @impl true
   def handle_call(:end_meeting, _from, state) do
     state = send_evt(state, Proto.evt_end_req(), %{})
     {:reply, :ok, state}
@@ -272,6 +306,8 @@ defmodule ZoomGate.MeetingBot do
 
   @impl true
   def handle_info({:gun_ws, _conn, _stream, {:text, data}}, state) do
+    if state.analyzer, do: send(state.analyzer, {:raw_ws, :incoming, data})
+
     case Protocol.decode(data) do
       {:ok, msg} ->
         state = handle_zoom_message(msg, state)
@@ -285,6 +321,8 @@ defmodule ZoomGate.MeetingBot do
 
   @impl true
   def handle_info({:gun_ws, _conn, _stream, {:binary, data}}, state) do
+    if state.analyzer, do: send(state.analyzer, {:raw_ws, :incoming, {:binary, data}})
+
     case Frame.decode(data) do
       {:data, json, server_seq} ->
         state = %{state | last_recv_seq: max(state.last_recv_seq, server_seq)}
@@ -496,6 +534,7 @@ defmodule ZoomGate.MeetingBot do
   defp send_evt(state, evt, body) do
     seq = state.seq + 1
     json = Protocol.encode(evt, body, seq)
+    if state.analyzer, do: send(state.analyzer, {:raw_ws, :outgoing, json})
 
     case state.as_type do
       2 ->

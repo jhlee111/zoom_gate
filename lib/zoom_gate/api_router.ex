@@ -21,6 +21,10 @@ defmodule ZoomGate.ApiRouter do
       POST   /sessions/:meeting_id/chat_waiting_room  Chat to waiting room (destNodeID=4)
       POST   /sessions/:meeting_id/mute               Mute a participant
       POST   /sessions/:meeting_id/end_meeting        End meeting for all
+      POST   /sessions/:meeting_id/start_recording    Start cloud recording
+      POST   /sessions/:meeting_id/stop_recording     Stop cloud recording
+      POST   /sessions/:meeting_id/lock_sharing        Lock/unlock screen sharing
+      POST   /sessions/:meeting_id/spotlight           Spotlight a participant
 
   ## Error Responses
 
@@ -58,9 +62,7 @@ defmodule ZoomGate.ApiRouter do
   post "/sessions" do
     meeting_id = conn.body_params["meeting_id"]
 
-    unless meeting_id do
-      send_json(conn, 422, %{error: "meeting_id is required"})
-    else
+    if meeting_id do
       opts =
         [
           sdk_key: conn.body_params["sdk_key"] || "",
@@ -77,6 +79,8 @@ defmodule ZoomGate.ApiRouter do
         {:error, reason} ->
           send_json(conn, 422, %{error: inspect(reason)})
       end
+    else
+      send_json(conn, 422, %{error: "meeting_id is required"})
     end
   end
 
@@ -193,6 +197,37 @@ defmodule ZoomGate.ApiRouter do
   post "/sessions/:meeting_id/end_meeting" do
     with_session(conn, meeting_id, fn ->
       ZoomGate.Session.end_meeting(meeting_id)
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/start_recording" do
+    with_session(conn, meeting_id, fn ->
+      ZoomGate.Session.start_recording(meeting_id)
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/stop_recording" do
+    with_session(conn, meeting_id, fn ->
+      ZoomGate.Session.stop_recording(meeting_id)
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/lock_sharing" do
+    with_session(conn, meeting_id, fn ->
+      locked = conn.body_params["locked"] == true
+      ZoomGate.Session.lock_sharing(meeting_id, locked)
+      send_json(conn, 200, %{status: "ok"})
+    end)
+  end
+
+  post "/sessions/:meeting_id/spotlight" do
+    with_session(conn, meeting_id, fn ->
+      zoom_user_id = conn.body_params["zoom_user_id"]
+      spotlight = Map.get(conn.body_params, "spotlight", true)
+      ZoomGate.Session.spotlight(meeting_id, zoom_user_id, spotlight)
       send_json(conn, 200, %{status: "ok"})
     end)
   end

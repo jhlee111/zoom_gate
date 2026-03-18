@@ -35,6 +35,10 @@ defmodule ZoomGate.MeetingBot.Protocol do
   defmacro evt_put_on_hold_req, do: 4113
   defmacro evt_chat_req, do: 4135
   defmacro evt_admit_all_req, do: 4199
+  defmacro evt_record_req, do: 4105
+  defmacro evt_lock_sharing_req, do: 4169
+  defmacro evt_spotlight_req, do: 4219
+  defmacro evt_follow_host_layout_req, do: 4223
   defmacro evt_mute_req, do: 8193
 
   @doc "Encode a WebSocket message as JSON string."

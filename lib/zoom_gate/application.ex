@@ -18,7 +18,8 @@ defmodule ZoomGate.Application do
         {ZoomGate.SessionSupervisor, []},
 
         # Phoenix endpoint (WebSocket + REST API)
-        {ZoomGate.Endpoint, []},
+        # Skipped when start_endpoint: false (embedded library mode)
+        endpoint_child(),
 
         # Cluster formation (connects to BEAM peers like GsNet)
         cluster_supervisor()
@@ -27,6 +28,12 @@ defmodule ZoomGate.Application do
 
     opts = [strategy: :one_for_one, name: ZoomGate.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  defp endpoint_child do
+    if Application.get_env(:zoom_gate, :start_endpoint, true) do
+      {ZoomGate.Endpoint, []}
+    end
   end
 
   defp cluster_supervisor do

@@ -22,6 +22,10 @@ defmodule ZoomGate.GateChannel do
       channel.push("admit_all", {})
       channel.push("mute", {zoom_user_id: 12345})
       channel.push("end_meeting", {})
+      channel.push("start_recording", {})
+      channel.push("stop_recording", {})
+      channel.push("lock_sharing", {locked: true})
+      channel.push("spotlight", {zoom_user_id: 12345})
 
       // Receive events
       channel.on("waiting_room_join", ({zoom_user_id, display_name}) => ...)
@@ -130,6 +134,35 @@ defmodule ZoomGate.GateChannel do
   @impl true
   def handle_in("end_meeting", _params, socket) do
     ZoomGate.Session.end_meeting(socket.assigns.meeting_id)
+    {:reply, :ok, socket}
+  end
+
+  @doc false
+  @impl true
+  def handle_in("start_recording", _params, socket) do
+    ZoomGate.Session.start_recording(socket.assigns.meeting_id)
+    {:reply, :ok, socket}
+  end
+
+  @doc false
+  @impl true
+  def handle_in("stop_recording", _params, socket) do
+    ZoomGate.Session.stop_recording(socket.assigns.meeting_id)
+    {:reply, :ok, socket}
+  end
+
+  @doc false
+  @impl true
+  def handle_in("lock_sharing", %{"locked" => locked}, socket) do
+    ZoomGate.Session.lock_sharing(socket.assigns.meeting_id, locked)
+    {:reply, :ok, socket}
+  end
+
+  @doc false
+  @impl true
+  def handle_in("spotlight", %{"zoom_user_id" => zid} = params, socket) do
+    spotlight = Map.get(params, "spotlight", true)
+    ZoomGate.Session.spotlight(socket.assigns.meeting_id, zid, spotlight)
     {:reply, :ok, socket}
   end
 

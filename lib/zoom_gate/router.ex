@@ -19,6 +19,7 @@ defmodule ZoomGate.Router do
     )
   end
 
+  forward("/api/webhooks", to: ZoomGate.WebhookRouter)
   forward("/api", to: ZoomGate.ApiRouter)
 
   match _ do

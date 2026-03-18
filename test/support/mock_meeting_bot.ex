@@ -40,6 +40,14 @@ defmodule ZoomGate.MockMeetingBot do
     GenServer.call(pid, {:mute, user_id, muted})
   end
 
+  def start_recording(pid), do: GenServer.call(pid, :start_recording)
+
+  def stop_recording(pid), do: GenServer.call(pid, :stop_recording)
+
+  def lock_sharing(pid, locked), do: GenServer.call(pid, {:lock_sharing, locked})
+
+  def spotlight(pid, user_id, spotlight), do: GenServer.call(pid, {:spotlight, user_id, spotlight})
+
   def end_meeting(pid) do
     GenServer.call(pid, :end_meeting)
   end
@@ -130,6 +138,26 @@ defmodule ZoomGate.MockMeetingBot do
 
   @impl true
   def handle_call({:mute, _user_id, _muted}, _from, state) do
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call(:start_recording, _from, state) do
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call(:stop_recording, _from, state) do
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:lock_sharing, _locked}, _from, state) do
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:spotlight, _user_id, _spotlight}, _from, state) do
     {:reply, :ok, state}
   end
 

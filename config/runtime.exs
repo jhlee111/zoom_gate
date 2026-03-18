@@ -94,5 +94,9 @@ end
 if config_env() in [:dev, :test] do
   config :zoom_gate,
     zoom_sdk_key: env!("ZOOM_SDK_KEY", :string, nil),
-    zoom_sdk_secret: env!("ZOOM_SDK_SECRET", :string, nil)
+    zoom_sdk_secret: env!("ZOOM_SDK_SECRET", :string, nil),
+    zoom_account_id: env!("ZOOM_ACCOUNT_ID", :string, nil),
+    zoom_client_id: env!("ZOOM_CLIENT_ID", :string, nil),
+    zoom_client_secret: env!("ZOOM_CLIENT_SECRET", :string, nil),
+    zoom_secret_token: env!("ZOOM_SECRET_TOKEN", :string, nil)
 end

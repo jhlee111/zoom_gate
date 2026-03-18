@@ -168,6 +168,18 @@ defmodule ZoomGate do
   @doc "Mutes a participant's audio."
   defdelegate mute(meeting_id, zoom_user_id), to: ZoomGate.Session
 
+  @doc "Starts cloud recording for the meeting."
+  defdelegate start_recording(meeting_id), to: ZoomGate.Session
+
+  @doc "Stops cloud recording for the meeting."
+  defdelegate stop_recording(meeting_id), to: ZoomGate.Session
+
+  @doc "Locks or unlocks screen sharing for participants."
+  defdelegate lock_sharing(meeting_id, locked), to: ZoomGate.Session
+
+  @doc "Spotlights or unspotlights a participant's video."
+  defdelegate spotlight(meeting_id, zoom_user_id, spotlight \\ true), to: ZoomGate.Session
+
   @doc "Ends the meeting for all participants."
   defdelegate end_meeting(meeting_id), to: ZoomGate.Session
 

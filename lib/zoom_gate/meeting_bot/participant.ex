@@ -103,41 +103,48 @@ defmodule ZoomGate.MeetingBot.Participant do
 
   defp process_updates(participants, updates) when is_list(updates) do
     Enum.reduce(updates, {participants, []}, fn raw, {ps, evts} ->
-      id = raw["id"]
-      new_data = from_raw(raw)
-
-      case Map.get(ps, id) do
-        nil ->
-          # New participant via update — treat as add
-          event_type = if new_data.b_hold, do: :waiting_room_join, else: :participant_joined
-          {Map.put(ps, id, new_data), evts ++ [{event_type, to_event_map(new_data)}]}
-
-        existing ->
-          merged = merge_fields(existing, new_data, raw)
-          update_evts = diff_events(existing, merged)
-          {Map.put(ps, id, merged), evts ++ update_evts}
-      end
+      apply_update(ps, evts, raw)
     end)
   end
 
   defp process_updates(participants, _), do: {participants, []}
 
+  defp apply_update(ps, evts, raw) do
+    id = raw["id"]
+    new_data = from_raw(raw)
+
+    case Map.get(ps, id) do
+      nil ->
+        event_type = if new_data.b_hold, do: :waiting_room_join, else: :participant_joined
+        {Map.put(ps, id, new_data), evts ++ [{event_type, to_event_map(new_data)}]}
+
+      existing ->
+        merged = merge_fields(existing, new_data, raw)
+        update_evts = diff_events(existing, merged)
+        {Map.put(ps, id, merged), evts ++ update_evts}
+    end
+  end
+
   defp process_removes(participants, removes) when is_list(removes) do
     Enum.reduce(removes, {participants, []}, fn raw, {ps, evts} ->
-      id = raw["id"]
-
-      case Map.get(ps, id) do
-        nil ->
-          {ps, evts}
-
-        existing ->
-          event_type = if existing.b_hold, do: :waiting_room_leave, else: :participant_left
-          {Map.delete(ps, id), evts ++ [{event_type, %{zoom_user_id: id}}]}
-      end
+      apply_remove(ps, evts, raw)
     end)
   end
 
   defp process_removes(participants, _), do: {participants, []}
+
+  defp apply_remove(ps, evts, raw) do
+    id = raw["id"]
+
+    case Map.get(ps, id) do
+      nil ->
+        {ps, evts}
+
+      existing ->
+        event_type = if existing.b_hold, do: :waiting_room_leave, else: :participant_left
+        {Map.delete(ps, id), evts ++ [{event_type, %{zoom_user_id: id}}]}
+    end
+  end
 
   defp merge_fields(existing, new_data, raw) do
     # Only update fields that are actually present in the raw data

@@ -42,6 +42,7 @@ defmodule ZoomGate.MixProject do
 
       # Dev tools
       {:tidewave, "~> 0.5", only: :dev},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
 
       # Documentation
       {:ex_doc, "~> 0.35", only: :dev, runtime: false},
@@ -70,7 +71,11 @@ defmodule ZoomGate.MixProject do
         "guides/session-lifecycle.md",
         "guides/authentication.md",
         "guides/webhooks.md",
-        "guides/error-reference.md"
+        "guides/webhook-rwg-integration.md",
+        "guides/error-reference.md",
+        "guides/library-integration.md",
+        "guides/gsnet-integration.md",
+        "guides/protocol-analyzer.md"
       ],
       groups_for_extras: [
         Guides: ~r/guides\/.*/
@@ -94,6 +99,20 @@ defmodule ZoomGate.MixProject do
           ZoomGate.MeetingBot.Protocol,
           ZoomGate.MeetingBot.Frame,
           ZoomGate.MeetingBot.Participant
+        ],
+        "Protocol Analyzer": [
+          ZoomGate.Analyzer,
+          ZoomGate.Analyzer.ClientState,
+          ZoomGate.Analyzer.EnrichedParticipant,
+          ZoomGate.Analyzer.MeetingSettings,
+          ZoomGate.Analyzer.ChatMessage,
+          ZoomGate.Analyzer.EventRegistry,
+          ZoomGate.Analyzer.EventRegistry.EventInfo,
+          ZoomGate.Analyzer.EventDecoder,
+          ZoomGate.Analyzer.Recorder,
+          ZoomGate.Analyzer.Correlator,
+          ZoomGate.Analyzer.StateServer,
+          ZoomGate.Analyzer.Tap
         ]
       ]
     ]

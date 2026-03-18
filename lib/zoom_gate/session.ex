@@ -116,6 +116,30 @@ defmodule ZoomGate.Session do
     GenServer.call(via(meeting_id), {:mute, zoom_user_id})
   end
 
+  @doc "Start cloud recording for the meeting."
+  @spec start_recording(String.t()) :: :ok
+  def start_recording(meeting_id) do
+    GenServer.call(via(meeting_id), :start_recording)
+  end
+
+  @doc "Stop cloud recording for the meeting."
+  @spec stop_recording(String.t()) :: :ok
+  def stop_recording(meeting_id) do
+    GenServer.call(via(meeting_id), :stop_recording)
+  end
+
+  @doc "Lock or unlock screen sharing for participants."
+  @spec lock_sharing(String.t(), boolean()) :: :ok
+  def lock_sharing(meeting_id, locked) do
+    GenServer.call(via(meeting_id), {:lock_sharing, locked})
+  end
+
+  @doc "Spotlight or unspotlight a participant's video."
+  @spec spotlight(String.t(), non_neg_integer(), boolean()) :: :ok
+  def spotlight(meeting_id, zoom_user_id, spotlight \\ true) do
+    GenServer.call(via(meeting_id), {:spotlight, zoom_user_id, spotlight})
+  end
+
   @doc "End the meeting for all participants."
   @spec end_meeting(String.t()) :: :ok
   def end_meeting(meeting_id) do
@@ -261,6 +285,30 @@ defmodule ZoomGate.Session do
   @impl true
   def handle_call({:mute, zoom_user_id}, _from, state) do
     worker_mod(state).mute(state.meeting_bot, zoom_user_id, true)
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call(:start_recording, _from, state) do
+    worker_mod(state).start_recording(state.meeting_bot)
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call(:stop_recording, _from, state) do
+    worker_mod(state).stop_recording(state.meeting_bot)
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:lock_sharing, locked}, _from, state) do
+    worker_mod(state).lock_sharing(state.meeting_bot, locked)
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:spotlight, zoom_user_id, spotlight}, _from, state) do
+    worker_mod(state).spotlight(state.meeting_bot, zoom_user_id, spotlight)
     {:reply, :ok, state}
   end
 

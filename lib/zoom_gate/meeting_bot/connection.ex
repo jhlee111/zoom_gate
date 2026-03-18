@@ -124,34 +124,9 @@ defmodule ZoomGate.MeetingBot.Connection do
 
   @doc "Step 3: Connect WebSocket to RWG server."
   def connect_websocket(config, meeting_info, rwg_info, cookies, extra_params \\ %{}) do
-    base_params = %{
-      "dn2" => Base.encode64(meeting_info["userName"] || config.display_name),
-      "browser" => @user_agent_short,
-      "trackAuth" => meeting_info["track_auth"] || "",
-      "mid" => meeting_info["mid"] || "",
-      "tid" => meeting_info["tid"] || "",
-      "lang" => "en",
-      "ts" => to_string(meeting_info["ts"] || ""),
-      "auth" => meeting_info["auth"] || "",
-      "sign" => meeting_info["sign"] || "",
-      "ZM-CID" => config.hardware_id,
-      "_ZM_MTG_TRACK_ID" => "",
-      "jscv" => "5.1.4",
-      "fromNginx" => "undefined",
-      "mpwd" => meeting_info["passWord"] || config.meeting_password,
-      "zak" => Map.get(config, :zak, ""),
-      "signType" => "sdk",
-      "rwcAuth" => rwg_info["rwcAuth"] || "",
-      "as_type" => to_string(Map.get(config, :as_type, 1)),
-      "email" => "0",
-      "tk" => "",
-      "cfs" => "0",
-      "clientCaps" => "595"
-    }
-
-    params = URI.encode_query(Map.merge(base_params, extra_params))
+    params = build_ws_params(config, meeting_info, rwg_info, extra_params)
     rwg_host = rwg_info["rwg"]
-    ws_path = "/wc/api/#{config.meeting_number}?#{params}"
+    ws_path = "/wc/api/#{config.meeting_number}?#{URI.encode_query(params)}"
 
     Logger.info("[Connection] Connecting to wss://#{rwg_host}#{ws_path}")
 
@@ -174,6 +149,37 @@ defmodule ZoomGate.MeetingBot.Connection do
   end
 
   # -- Private --
+
+  defp build_ws_params(config, meeting_info, rwg_info, extra_params) do
+    mi = fn key -> meeting_info[key] || "" end
+
+    base = %{
+      "dn2" => Base.encode64(mi.("userName") |> then(&((&1 == "" && config.display_name) || &1))),
+      "browser" => @user_agent_short,
+      "trackAuth" => mi.("track_auth"),
+      "mid" => mi.("mid"),
+      "tid" => mi.("tid"),
+      "lang" => "en",
+      "ts" => to_string(mi.("ts")),
+      "auth" => mi.("auth"),
+      "sign" => mi.("sign"),
+      "ZM-CID" => config.hardware_id,
+      "_ZM_MTG_TRACK_ID" => "",
+      "jscv" => "5.1.4",
+      "fromNginx" => "undefined",
+      "mpwd" => mi.("passWord") |> then(&((&1 == "" && config.meeting_password) || &1)),
+      "zak" => Map.get(config, :zak, ""),
+      "signType" => "sdk",
+      "rwcAuth" => rwg_info["rwcAuth"] || "",
+      "as_type" => to_string(Map.get(config, :as_type, 1)),
+      "email" => "0",
+      "tk" => "",
+      "cfs" => "0",
+      "clientCaps" => "595"
+    }
+
+    Map.merge(base, extra_params)
+  end
 
   defp await_ws_upgrade(conn, stream_ref) do
     receive do
@@ -239,10 +245,9 @@ defmodule ZoomGate.MeetingBot.Connection do
   defp extract_cookies(headers) do
     headers
     |> Enum.filter(fn {k, _} -> String.downcase(to_string(k)) == "set-cookie" end)
-    |> Enum.map(fn {_, v} ->
+    |> Enum.map_join("; ", fn {_, v} ->
       to_string(v) |> String.split(";") |> hd()
     end)
-    |> Enum.join("; ")
   end
 
   defp headers_charlist do

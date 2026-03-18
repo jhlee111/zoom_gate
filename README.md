@@ -137,6 +137,40 @@ curl -X POST http://localhost:4000/api/sessions/123456789/admit \
 | `host_changed` | `{new_host_id}` | Host role transferred |
 | `meeting_ended` | `{reason}` | Meeting ended |
 
+## Standalone vs Embedded
+
+ZoomGate supports two deployment modes:
+
+| | Standalone (Docker) | Embedded (Library) |
+|---|---|---|
+| **Deployment** | Separate container | Inside your Elixir app |
+| **API** | REST, WebSocket, BEAM | BEAM only (direct function calls) |
+| **HTTP server** | Starts on port 4000 | Disabled |
+| **Use case** | Multi-language consumers | Elixir-only consumers |
+
+### Embedded Mode
+
+Add ZoomGate as a dependency and disable the HTTP endpoint:
+
+```elixir
+# mix.exs
+{:zoom_gate, "~> 0.3"}
+
+# config/config.exs
+config :zoom_gate, start_endpoint: false
+```
+
+Then call the BEAM API directly — no HTTP server, no port conflicts:
+
+```elixir
+{:ok, _pid} = ZoomGate.join_meeting("123456789",
+  sdk_key: "...", sdk_secret: "...", zak: "...",
+  callback: self()
+)
+```
+
+See the [Library Integration guide](guides/library-integration.md) for full details.
+
 ## Architecture
 
 ```

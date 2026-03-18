@@ -1129,3 +1129,347 @@ Tested with both `as_type=1` and `as_type=2` — both modes successfully:
 - Detected waiting room entry
 - Sent admit command
 - Confirmed participant joined meeting
+
+---
+
+## Analyzer-Discovered Events (2026-03-17, unconfirmed)
+
+Discovered by the ZoomGate Protocol Analyzer during a live session (200 messages, 840s).
+These events were observed but not yet fully confirmed. Body fields are based on observed data.
+
+### New Server → Client Events
+
+| evt | Tentative Name | Body Fields | Category | Notes |
+|-----|---------------|-------------|----------|-------|
+| 7965 | `privacySettings` | `{strPrivacy}` | Meeting | Sent once at join |
+| 7972 | `mmrCapability` | `{bIsMMRVideoSupport}` or `{bIsMMRShareSupport}` | Media | MMR server feature flags, sent separately for video and share |
+| 7976 | `livestreamConfig` | `{broadcastToken, channels, liveStreamViewUrl, maxWallUsers}` | Livestream | Livestream configuration, sent at join even when not streaming |
+| 7996 | `mediaReady` | `{bReady: true, type: 1\|2\|3}` | Media | Media channel ready signal. type 1=audio?, 2=video?, 3=sharing? (3 messages sent) |
+| 8023 | `aiPrivilege` | `{privilege: 3}` | AI | AI Companion privilege level |
+| 8030 | `aiCompanionConfig` | `{AicTurnOnFlowEnabled, AicTurnOffFlowEnabled, QueryEntranceEnabled, QueryFeatureOn, SummaryEntranceEnabled, SummaryFeatureOn}` | AI | AI Companion feature toggles |
+| 8037 | `featureSupport` | `{supported: true}` | Meeting | Unknown feature support flag |
+| 12041 | `activeSpeakerEnd` | `{asn1: userId}` or `nil` | Audio | Active speaker ended / audio silence. Counterpart to evt 12033 (activeSpeaker start) |
+| 16139 | `audioStreamId` | `{id: streamId}` | Audio | Audio stream identifier. Observed when participant unmutes. ID differs from participant userId |
+| 20242 | `shareObjectType` | `{activeNodeID, sharedObj: 2}` | Sharing | Type of shared object. sharedObj: 2=screen? Sent when sharing starts |
+
+### New Participant Fields (from evt 7937)
+
+These fields were observed in roster add/update but not previously documented:
+
+| Field | Type | Example | Notes |
+|-------|------|---------|-------|
+| `audio` | string | `""`, `"computer"` | Audio connection type (empty=none, "computer"=VoIP) |
+| `bAICompanionMgr` | boolean | `true` | AI Companion manager flag |
+| `bAudioUnencrytped` | boolean | `false` | Audio encryption status |
+| `bBotUser` | boolean | `false` | Is bot user |
+| `bCanPinMultiVideo` | boolean | `true` | Can pin multiple videos |
+| `bCapsPinMultiVideo` | boolean | `true` | Capability: pin multi video |
+| `bCapsRequestLT` | boolean | `true` | Capability: request live transcription |
+| `bCompanionMode` | boolean | `false` | Companion mode active |
+| `bDisableNameBox` | boolean | `false` | Name box disabled |
+| `bLocalLivestreamPermission` | boolean | `false` | Local livestream permission |
+| `bLogIn` | boolean | `true` | Logged in (vs guest) |
+| `bMultiStreamVideoUser` | boolean | `false` | Multi-stream video user |
+| `bNDIBroadcast` | boolean | `false` | NDI broadcast enabled |
+| `bPrivateChatMsgDisabled` | boolean | `false` | Private chat disabled |
+| `bRestrictRemoteControl` | boolean | `false` | Remote control restricted |
+| `bSRAdmin` | boolean | `true` | Smart Recording admin |
+| `bSimuliveUser` | boolean | `false` | Simulive user |
+| `bTokenSdkLivestreamPermission` | boolean | `false` | SDK livestream permission |
+| `bVisibleGateway` | boolean | `false` | Visible gateway |
+| `bZeUser` | boolean | `false` | Zoom Events user |
+| `canRecord` | integer | `0` | Recording permission level |
+| `caps4` | string | `"0"`, `"1"` | Extended capabilities (string-encoded) |
+| `nSkinTone` | integer | `1` | Reaction skin tone preference |
+| `sdkKey` | string | `"G0_DiIn_..."` | SDK key hash (for SDK clients) |
+| `uniqueUserID` | integer | `1` | Unique user ID within session |
+| `userEmail` | string | `"93kO5HR4..."` | Encrypted/hashed user email |
+| `bShareAudioOn` | boolean | `false` | Sharing audio with screen share |
+| `bVideoShare` | boolean | `false` | Video share mode |
+| `shareSsrc` | integer | `33557507` | SSRC for screen share stream |
+| `audioConnectionStatus` | integer | `0`, `2` | 0=disconnected, 2=connected |
+
+### New Meeting Settings Fields (from evt 7938)
+
+| Field | Type | Example | Notes |
+|-------|------|---------|-------|
+| `NewLttAvaliable` | boolean | `true` | New live transcription available |
+| `QaEnabled` | boolean | `false` | Q&A enabled |
+| `QaQuestionEnabled` | boolean | `true` | Q&A questions enabled |
+| `SalesRecordingAnalytics` | boolean | `false` | Sales recording analytics |
+| `VideoHd` | integer | `0` | Video HD mode |
+| `WebinarResourceUnavaliable` | boolean | `false` | Webinar resource unavailable |
+| `bAllowScreenCapture` | boolean | `true` | Allow screen capture |
+| `bAllowSimuliveGoLive` | boolean | `false` | Allow simulive go live |
+| `bAllowedAvatar` | boolean | `true` | Avatars allowed |
+| `bAttendeeAnnotationLock` | boolean | `false` | Attendee annotation locked |
+| `bCCEditorAssigned` | boolean | `false` | CC editor assigned |
+| `bCanUnmuteVideo` | boolean | `true` | Can unmute video |
+| `bChime` | boolean | `false` | Entry/exit chime |
+| `bPause` | boolean | `false` | Meeting paused |
+| `bRecord` | boolean | `false` | Recording active |
+| `bWaterMarkOn` | boolean | `false` | Watermark enabled |
+| `confStatus` | integer | `5` | Conference status code |
+| `disAllowClientStopAutoCmr` | boolean | `false` | Disallow client stop auto CMR |
+| `enableAutomicRecordingCloud` | boolean | `false` | Auto cloud recording |
+| `lockShare` | integer | `0`, `1` | 0=anyone can share, 1=host only |
+| `webinarMaxShareCount` | integer | `1` | Max simultaneous shares |
+
+### Observed Protocol Flows
+
+#### Screen Share Start/Stop Flow
+```
+← evt=7937 update {bShareOn:true, bSharePause:false, bShareAudioOn:false, bVideoShare:false, shareSsrc:N}
+← evt=20241 annotationData {activeNodeID, annotationOff:0}
+← evt=20235 sharingData2 {ssrc, streamIndex:1, videoMode:false}
+← evt=20225 sharingStatus {activeNodeID, bStatus:1, ssrc}
+← evt=20242 shareObjectType {activeNodeID, sharedObj:2}     [NEW]
+← evt=20236 sharingData3 {ssrc}
+...
+← evt=7937 update {bShareOn:false, shareSsrc:N}
+← evt=20225 sharingStatus {activeNodeID, bStatus:0, ssrc:0}
+```
+
+#### Audio Connect Flow
+```
+← evt=7937 update {audio:""}                    -- audio init
+← evt=7937 update {muted:true, caps:N}          -- initial mute
+← evt=7937 update {audio:"computer"}            -- VoIP connected
+← evt=7937 update {audioConnectionStatus:2}     -- fully connected
+```
+
+#### Active Speaker Flow
+```
+← evt=7937 update {muted:false}                 -- unmute
+← evt=12033 audioSessionData {asn1:userId}       -- speaking (active speaker)
+← evt=16139 audioStreamId {id:streamId}          -- audio stream [NEW]
+← evt=12041 activeSpeakerEnd {asn1:userId}       -- stopped speaking [NEW]
+```
+
+#### Participant Rejoin (Browser Restart) Flow
+```
+← evt=7937 update {bInFailover:true, id:OLD_ID}      -- old session failing over
+← evt=7937 remove {id:OLD_ID, nUserStatus:1}          -- old ID removed
+← evt=7937 add {id:NEW_ID, action:2, bHold:false, ...} -- new ID, skips waiting room
+```
+Note: `action:2` + `nUserStatus:1` = failover rejoin (not a new join). Display name and userGUID preserved.
+
+---
+
+## Live-Verified Commands (2026-03-17)
+
+The following commands were sent during live meeting sessions and their responses confirmed via WebSocket capture. All payloads are exact as sent/received.
+
+### recordMeeting (evt 4105)
+
+Start or stop cloud recording.
+
+**Request:**
+```json
+{
+  "evt": 4105,
+  "body": {
+    "bRecord": true,
+    "bPause": false
+  },
+  "seq": N
+}
+```
+
+**Stop:**
+```json
+{
+  "evt": 4105,
+  "body": {
+    "bRecord": false,
+    "bPause": false
+  },
+  "seq": N
+}
+```
+
+**Response sequence (evt 7938 meetingSettings):**
+```
+← {bRecord: true}
+← {cmrServerStatus: 1}     // cloud recording initializing
+← {cmrServerStatus: 2}     // cloud recording active
+  ... recording ...
+← {cmrServerStatus: 4}     // cloud recording stopping (after bRecord:false sent)
+← {bRecord: false}
+```
+
+`cmrServerStatus` values observed:
+| Value | Meaning |
+|-------|---------|
+| 1 | Initializing |
+| 2 | Recording active |
+| 4 | Stopping / finalized |
+
+**Notes:** The response arrives as multiple partial `evt=7938` updates (not a single message). The `bPause` field controls pause/resume of an active recording (`bRecord` must remain `true` while paused).
+
+### lockSharing (evt 4169)
+
+Lock or unlock screen sharing so only the host can share.
+
+**Request (lock — host only):**
+```json
+{
+  "evt": 4169,
+  "body": {
+    "lockShare": 1
+  },
+  "seq": N
+}
+```
+
+**Request (unlock — anyone can share):**
+```json
+{
+  "evt": 4169,
+  "body": {
+    "lockShare": 0
+  },
+  "seq": N
+}
+```
+
+**Response (evt 7938 meetingSettings):**
+```json
+{
+  "evt": 7938,
+  "body": {
+    "lockShare": 1
+  }
+}
+```
+
+**Notes:** Response is immediate. The `lockShare` value is echoed back in the meeting settings update. `0` = anyone can share, `1` = host only.
+
+### spotlightVideo (evt 4219)
+
+Spotlight a participant's video for all attendees, or remove spotlight.
+
+**Request (spotlight on):**
+```json
+{
+  "evt": 4219,
+  "body": {
+    "id": 16778240,
+    "bSpotlight": true
+  },
+  "seq": N
+}
+```
+
+**Request (spotlight off):**
+```json
+{
+  "evt": 4219,
+  "body": {
+    "id": 16778240,
+    "bSpotlight": false
+  },
+  "seq": N
+}
+```
+
+**Response:** Triggers `avData` and `videoLayout2` events reflecting the updated video layout. No direct confirmation event — the layout change serves as confirmation.
+
+**Notes:** The `id` field is the participant's current roster `id` (not userGUID). Multiple participants can be spotlighted simultaneously if the account supports it.
+
+### followHostLayout (evt 4223)
+
+Force all participants to follow the host's video layout (speaker view, gallery view, etc.).
+
+**Request (enable):**
+```json
+{
+  "evt": 4223,
+  "body": {
+    "bFollow": true
+  },
+  "seq": N
+}
+```
+
+**Request (disable):**
+```json
+{
+  "evt": 4223,
+  "body": {
+    "bFollow": false
+  },
+  "seq": N
+}
+```
+
+**Notes:** Functionally equivalent to "Follow Host's Video Order" in the Zoom desktop client. When enabled, `bFollowHostVideo` is set in meeting settings. No direct response event observed — the setting propagates via `evt=7938` to other clients.
+
+### allowSelfRecord (evt 4325)
+
+Grant or revoke permission for a participant to record locally (ISO recording).
+
+**Request:**
+```json
+{
+  "evt": 4325,
+  "body": {
+    "bAllowISORecord": true
+  },
+  "seq": N
+}
+```
+
+**Response (evt 7937 roster update):**
+The target participant's roster entry is updated to reflect the new recording permission. The `canRecord` field and/or `bLocalRecordStatus` field change accordingly.
+
+**Notes:** This controls ISO (Individual Speaker Output) local recording permission. The host must have local recording enabled in account settings. `bAllowISORecord: true` grants permission, `false` revokes it.
+
+### localRecordingControl (evt 4343)
+
+Manage local recording permissions and state. This is a multiplexed event — the `cmdType` field determines the specific action.
+
+**Grant permission (host side):**
+```json
+{
+  "evt": 4343,
+  "body": {
+    "cmdType": 1,
+    "userId": 16778240,
+    "grant": true
+  },
+  "seq": N
+}
+```
+
+**Request permission (participant side):**
+```json
+{
+  "evt": 4343,
+  "body": {
+    "cmdType": 2
+  },
+  "seq": N
+}
+```
+
+**Recording status update:**
+```json
+{
+  "evt": 4343,
+  "body": {
+    "cmdType": 3,
+    "status": 1
+  },
+  "seq": N
+}
+```
+
+**cmdType values observed:**
+| cmdType | Direction | Purpose |
+|---------|-----------|---------|
+| 1 | Host -> Server | Grant/revoke local recording permission (`grant: true/false`) |
+| 2 | Participant -> Server | Request local recording permission from host |
+| 3 | Participant -> Server | Report local recording status (`status: 0`=stopped, `1`=recording) |
+
+**Notes:** The response arrives as `evt=4344` (recording permissions) or as a roster update. The `userId` field in cmdType=1 targets the specific participant. This event shares evt code 4343 across multiple functions: `localRecordingGrantPermission`, `hostGrantPermission`, `localRecordingRequestPermission`, and `localRecordingMeeting`.
