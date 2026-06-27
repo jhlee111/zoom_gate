@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # --- Stage 1: Build ----------------------------------------------------------
-FROM hexpm/elixir:1.18.3-erlang-27.3-debian-bookworm-20250224-slim AS builder
+FROM hexpm/elixir:1.19.5-erlang-28.4.1-debian-trixie-20260223-slim AS builder
 
 RUN apt-get update -y && \
     apt-get install -y build-essential git && \
@@ -30,7 +30,7 @@ COPY rel rel
 RUN mix compile && mix release
 
 # --- Stage 2: Runner ---------------------------------------------------------
-FROM debian:bookworm-slim AS runner
+FROM debian:trixie-20260223-slim AS runner
 
 RUN apt-get update -y && \
     apt-get install -y libstdc++6 openssl libncurses6 locales ca-certificates curl && \
