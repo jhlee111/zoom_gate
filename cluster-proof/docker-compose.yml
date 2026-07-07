@@ -1,0 +1,63 @@
+# Dev-only proof (S1) — NOT a deploy artifact.
+#
+# Stands up two BEAM nodes on a shared user-defined docker network to prove
+# distributed Erlang works in the container topology BEFORE wiring gs_net's
+# real release (S2). Both nodes run the zoom_gate image; the `gs_net` service is
+# a STAND-IN for gs_net (it exercises the exact cross-node API — ZoomGate.Session
+# + ZoomGate.PubSub — that gs_net's S3 transport will call). S2/S4b replace it
+# with the real gs_net release.
+#
+# Networking facts this proof established (carry to the real S4b compose):
+#   - docker DNS resolves service names/aliases (underscores included).
+#   - Erlang LONGNAMES (-name, what the release uses when RELEASE_NODE is set)
+#     require the @host part to be a FQDN (contain a dot); a single-label host
+#     like `gs_net` is rejected ("Hostname ... is illegal"). So each node's host
+#     is a dotted alias (gs-net.bnb / zoom-gate.bnb), set BOTH as the container
+#     hostname (self-resolution) and a network alias (peer resolution).
+#   - No port pin/publish needed: containers on a user-defined bridge reach each
+#     other on ALL ports (EPMD 4369 + the ephemeral dist port).
+name: zg-cluster-proof
+
+x-node: &node
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  volumes:
+    - ./:/proof:ro
+
+x-env: &env
+  SECRET_KEY_BASE: "dev-only-secret-key-base-that-is-at-least-64-bytes-long-for-development-use-only"
+  PHX_HOST: "localhost"
+  PORT: "4000"
+  ZOOM_GATE_API_KEY: "zg_proof_key"
+  CLUSTER_STRATEGY: "epmd"
+
+services:
+  zoom_gate:
+    <<: *node
+    hostname: zoom-gate.bnb
+    environment:
+      <<: *env
+      RELEASE_NODE: "zoom_gate@zoom-gate.bnb"
+      RELEASE_COOKIE: "${COOKIE_ZG:-proof_shared_cookie}"
+      CLUSTER_HOSTS: "gs_net@gs-net.bnb"
+    networks:
+      bnb:
+        aliases: [zoom-gate.bnb]
+
+  # gs_net stand-in (zoom_gate image) — proves the peer side of the cluster.
+  gs_net:
+    <<: *node
+    hostname: gs-net.bnb
+    environment:
+      <<: *env
+      RELEASE_NODE: "gs_net@gs-net.bnb"
+      RELEASE_COOKIE: "${COOKIE_GS:-proof_shared_cookie}"
+      CLUSTER_HOSTS: "zoom_gate@zoom-gate.bnb"
+    networks:
+      bnb:
+        aliases: [gs-net.bnb]
+
+networks:
+  bnb:
+    driver: bridge
