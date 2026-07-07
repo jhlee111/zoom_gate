@@ -53,7 +53,10 @@ defmodule ZoomGate.Analyzer.CorrelatorTest do
       ts = System.monotonic_time(:microsecond)
 
       records = [
-        make_record(4135, :outgoing, body: %{"msgID" => "msg-123", "text" => "hi"}, timestamp: ts),
+        make_record(4135, :outgoing,
+          body: %{"msgID" => "msg-123", "text" => "hi"},
+          timestamp: ts
+        ),
         make_record(4136, :incoming,
           body: %{"msgID" => "msg-123", "result" => 0},
           timestamp: ts + 30_000
